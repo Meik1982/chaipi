@@ -1,0 +1,27 @@
+{
+  "name": "chaipi",
+  "version": "0.1.0",
+  "description": "ChAIPi: Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano & WebGPU over CDP)",
+  "main": "bin/chaipi.mjs",
+  "bin": {
+    "chaipi": "./bin/chaipi.mjs"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/test_chaipi.js",
+    "lint": "node --check bin/chaipi.mjs"
+  },
+  "keywords": [
+    "chrome-ai",
+    "gemini-nano",
+    "prompt-api",
+    "cli",
+    "pipe",
+    "token-guard",
+    "cdp",
+    "zero-dependency",
+    "unix-pipe"
+  ],
+  "author": "Meik",
+  "license": "MIT"
+}

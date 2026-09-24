@@ -17,6 +17,7 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         assert.ok(res.stdout.includes('--check'), 'Muss --check auflisten');
         assert.ok(res.stdout.includes('--profile'), 'Muss --profile auflisten');
         assert.ok(res.stdout.includes('--json'), 'Muss --json auflisten');
+        assert.ok(res.stdout.includes('--verbose'), 'Muss --verbose auflisten');
     });
 
     await t.test('2. Versionsabfrage (--version / -v) liefert korrekte SemVer', () => {
@@ -51,5 +52,21 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
             timeout: 15000
         });
         assert.equal(res.status, 0);
+    });
+
+    await t.test('6. Verbose-Modus (--verbose und -V) schreibt Statuslogs auf stderr ohne stdout-JSON zu verfälschen', () => {
+        for (const flag of ['--verbose', '-V']) {
+            const res = spawnSync(CHAIPI_BIN, ['--check', flag], {
+                encoding: 'utf8',
+                timeout: 15000
+            });
+            assert.equal(res.status, 0, `Diagnose mit ${flag} muss erfolgreich sein (Exit 0)`);
+            assert.ok(res.stderr.includes('[chaipi verbose'), `stderr muss Verbose-Logs enthalten bei ${flag}`);
+            // stdout muss weiterhin sauberes, ungefiltertes JSON sein
+            const data = JSON.parse(res.stdout.trim());
+            assert.equal(data.name, 'ChAIPi');
+            assert.equal(data.version, '0.1.0');
+            assert.ok(typeof data.availability === 'string');
+        }
     });
 });

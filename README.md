@@ -85,9 +85,10 @@ cat data.txt | chaipi --json "Extrahiere Metriken"
 | Flag | Beschreibung |
 | :--- | :--- |
 | `--check` | Führt einen schnellen System- & Modell-Check via CDP durch (ohne Prompt). |
+| `-V, --verbose` | Gibt detaillierte Status- & Diagnose-Meldungen sowie Modell-Downloadfortschritte auf `stderr` aus. |
 | `--profile <pfad>` | Verwendet ein bestehendes Chrome-Profil (z. B. `~/.config/google-chrome`). |
 | `--temp-profile` | Startet Chrome mit einem isolierten, temporären Profil (Standard). |
-| `--url <url>` | Lädt eine benutzerdefinierte Webseite als Ausführungskontext (Standard: `LOCAL`). |
+| `--url <url>` | Lädt eine benutzerdefinierte Webseite als Ausführungskontext. |
 | `--json` | Liefert die CLI-Antwort im standardisierten JSON-Format. |
 | `-v, --version` | Zeigt die Version von ChAIPi an. |
 | `-h, --help` | Zeigt die integrierte Hilfe. |

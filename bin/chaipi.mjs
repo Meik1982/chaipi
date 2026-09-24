@@ -8,7 +8,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -137,6 +137,56 @@ if (!isCheckOnly) {
     verboseLog(`Finaler Prompt vorbereitet (${finalPrompt.length} Zeichen).`);
 }
 
+function seedExistingModelIfAvailable(profileDir) {
+    const knownChromePaths = [
+        join(homedir(), '.config', 'google-chrome'),
+        join(homedir(), '.config', 'chromium'),
+        join(homedir(), '.config', 'google-chrome-beta'),
+        join(homedir(), '.config', 'google-chrome-unstable')
+    ];
+
+    for (const chromePath of knownChromePaths) {
+        const optGuideDir = join(chromePath, 'OptGuideOnDeviceModel');
+        const localStatePath = join(chromePath, 'Local State');
+        if (existsSync(optGuideDir) && existsSync(localStatePath)) {
+            try {
+                // Verlinke OptGuideOnDeviceModel falls noch nicht vorhanden
+                const targetOptGuideDir = join(profileDir, 'OptGuideOnDeviceModel');
+                if (!existsSync(targetOptGuideDir)) {
+                    symlinkSync(optGuideDir, targetOptGuideDir);
+                    verboseLog(`Bestehendes On-Device Modell erkannt und verlinkt von: ${optGuideDir}`);
+                }
+
+                // Synchronisiere Component-Registrierung in Local State
+                const mainState = JSON.parse(readFileSync(localStatePath, 'utf8'));
+                const chaipiStatePath = join(profileDir, 'Local State');
+                let chaipiState = {};
+                if (existsSync(chaipiStatePath)) {
+                    try { chaipiState = JSON.parse(readFileSync(chaipiStatePath, 'utf8')); } catch (e) {}
+                }
+
+                if (mainState.updateclientdata?.apps?.['fklghjjljmnfjoepjmlobpekiapffcja']) {
+                    chaipiState.updateclientdata = chaipiState.updateclientdata || { apps: {} };
+                    chaipiState.updateclientdata.apps['fklghjjljmnfjoepjmlobpekiapffcja'] = 
+                        mainState.updateclientdata.apps['fklghjjljmnfjoepjmlobpekiapffcja'];
+                }
+                if (mainState.optimization_guide) {
+                    chaipiState.optimization_guide = mainState.optimization_guide;
+                }
+                if (mainState.browser) {
+                    chaipiState.browser = mainState.browser;
+                }
+                writeFileSync(chaipiStatePath, JSON.stringify(chaipiState, null, 2));
+                verboseLog('Lokale Modell-Registrierung erfolgreich übernommen (kein Download erforderlich).');
+                return true;
+            } catch (e) {
+                verboseLog(`Hinweis beim Übernehmen des bestehenden Modells: ${e.message}`);
+            }
+        }
+    }
+    return false;
+}
+
 // Profilpfad vorbereiten: Standard ist persistenter Cache unter ~/.cache/chaipi/profile
 let activeProfileDir = customProfileDir;
 let createdTempDir = null;
@@ -151,6 +201,9 @@ if (isTempProfile) {
     mkdirSync(activeProfileDir, { recursive: true });
     verboseLog(`Verwende persistentes Profilverzeichnis: ${activeProfileDir}`);
 }
+
+// Automatische Übernahme des Modells aus existierendem Haupt-Chrome-Profil
+seedExistingModelIfAvailable(activeProfileDir);
 
 // Lokale Runtime-HTML im Profilordner bereitstellen (für sicheren WICG-Origin-Kontext)
 const runtimeHtmlPath = join(activeProfileDir, 'chaipi-runtime.html');

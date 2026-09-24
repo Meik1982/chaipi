@@ -45,22 +45,22 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Sauberes Beenden bei vorzeitigem Schließen der Downstream-Pipe (z. B. bei `chaipi ... | head -n 1`).
 - [x] **Kontextfenster-Budgetierung & Token-Guard:**
   - Warnung auf `stderr` bei Überlänge (> 25.000 Zeichen), um Kontext-Overflows bei Gemini Nano vorab transparent zu machen.
-- [ ] **Graceful Process-Shutdown via CDP (`Browser.close`):**
-  - Vor dem Senden von `SIGTERM` an die OS-Prozess-ID den CDP-Befehl `Browser.close` über den WebSocket absetzen.
+- [x] **Graceful Process-Shutdown via CDP (`Browser.close`):**
+  - Vor dem Senden von `SIGTERM` an die OS-Prozess-ID wird der CDP-Befehl `Browser.close` über den WebSocket abgesetzt.
   - Verhindert verwaiste Headless-Zygote-, Crashpad- oder Renderer-Prozesse bei abruptem Programmabbruch.
-- [ ] **JSON-Output-Konsistenz (`--json`):**
-  - Sicherstellen, dass bei `--json` sowohl Erfolgs- als auch Fehler-Payloads immer ein einheitliches Schema aufweisen (`{ success: boolean, data?: string, error?: string, metrics?: object }`).
+- [x] **JSON-Output-Konsistenz (`--json`):**
+  - Einheitliches Schema bei `--json` für strukturierte Rückgaben (`{ success: true, data: ... }` bzw. `{ success: false, error: ... }`).
 
 ---
 
 ## 3. Erweiterte Funktions- & UX-Roadmap (Priorisiert)
 
 ### Priorität 1: Streaming & Prompt-Steuerung
-- [ ] **Echtzeit-Streaming (`--stream`):**
+- [x] **Echtzeit-Streaming (`--stream`):**
   - Anbindung von `session.promptStreaming()` via CDP-Event-Bridge.
   - Inkrementelle Token-Ausgabe direkt auf `stdout` für minimale wahrgenommene Latenz im Terminal.
-- [ ] **Prompt-Parameter konfigurierbar machen:**
-  - `--system` / `-s`: Benutzerdefinierter System-Prompt bei der Session-Erstellung (`LanguageModel.create({ systemPrompt })`).
+- [x] **Prompt-Parameter konfigurierbar machen:**
+  - `--system` / `-s`: Benutzerdefinierter System-Prompt bei der Session-Erstellung (unterstützt sowohl `initialPrompts: [{ role: 'system', ... }]` als auch `systemPrompt`).
   - `--temperature` / `-t`: Steuerung der Kreativität (0.0 für deterministische Extraktion, 1.0 für kreative Texte).
   - `--top-k`: Begrenzung des Token-Pools.
 
@@ -71,7 +71,7 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Reduziert die Ausführungszeit von ~1.5 Sekunden (Chrome-Kaltstart) auf **unter 200 ms** für hochfrequente Shell-Pipes und Skripte.
 
 ### Priorität 3: Paketierung & Distribution
-- [ ] **Arch Linux / CachyOS PKGBUILD:**
+- [x] **Arch Linux / CachyOS PKGBUILD:**
   - Saubere Integration in die lokale Paketverwaltung (`pacman`/`makepkg`) zur Vermeidung von unversionierten globalen Symlinks.
   - Bereitstellung in `dist/archlinux/PKGBUILD`.
 - [ ] **NPM Global Package Readiness:**

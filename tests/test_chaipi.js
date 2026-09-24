@@ -17,6 +17,10 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         assert.ok(res.stdout.includes('--check'), 'Muss --check auflisten');
         assert.ok(res.stdout.includes('--profile'), 'Muss --profile auflisten');
         assert.ok(res.stdout.includes('--json'), 'Muss --json auflisten');
+        assert.ok(res.stdout.includes('--stream'), 'Muss --stream auflisten');
+        assert.ok(res.stdout.includes('--system'), 'Muss --system auflisten');
+        assert.ok(res.stdout.includes('--temperature'), 'Muss --temperature auflisten');
+        assert.ok(res.stdout.includes('--top-k'), 'Muss --top-k auflisten');
         assert.ok(res.stdout.includes('--verbose'), 'Muss --verbose auflisten');
     });
 
@@ -89,6 +93,32 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         });
         assert.equal(res.status, 0);
         const parsed = JSON.parse(res.stdout.trim());
-        assert.ok(parsed.name === 'ChAIPi' || parsed.output || parsed.success !== undefined);
+        assert.equal(parsed.success, true);
+        assert.equal(parsed.data.name, 'ChAIPi');
+        assert.equal(parsed.data.version, '0.1.0');
+        assert.ok(typeof parsed.data.availability === 'string');
+    });
+
+    await t.test('9. Echtzeit-Streaming (--stream) liefert Token-Ausgabe auf stdout', () => {
+        const res = spawnSync(CHAIPI_BIN, ['--stream', 'Zähle von 1 bis 3'], {
+            encoding: 'utf8',
+            timeout: 20000
+        });
+        assert.equal(res.status, 0, 'Streaming-Ausführung muss erfolgreich sein');
+        assert.ok(res.stdout.length > 0, 'stdout darf beim Streaming nicht leer sein');
+        assert.match(res.stdout, /[123]/, 'Muss Zahlen aus dem Zähl-Prompt enthalten');
+    });
+
+    await t.test('10. System-Prompt (-s / --system) & Temperatur (-t) Steuerung', () => {
+        const res = spawnSync(CHAIPI_BIN, [
+            '-s', 'Translate to English. Output only the translation.',
+            '-t', '0.1',
+            'Guten Morgen'
+        ], {
+            encoding: 'utf8',
+            timeout: 20000
+        });
+        assert.equal(res.status, 0, 'Prompt mit System-Prompt muss erfolgreich sein');
+        assert.match(res.stdout.toLowerCase(), /morning/, 'Muss englische Übersetzung enthalten');
     });
 });

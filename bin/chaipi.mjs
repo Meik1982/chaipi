@@ -97,6 +97,10 @@ Verwendung:
 
 Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
+  --stream              Gibt Tokens in Echtzeit direkt auf stdout aus (Streaming)
+  -s, --system <text>   Definiert einen System-Prompt für die Modell-Session
+  -t, --temperature <n> Steuert die Modell-Kreativität (z. B. 0.2 für Extraktion, 0.8 für Text)
+  --top-k <n>           Begrenzt den Sampling-Pool des Modells
   --profile <pfad>      Verwendet ein bestimmtes Profilverzeichnis (Standard: ~/.cache/chaipi/profile)
   --temp-profile        Erzwingt ein isoliertes temporäres Profil ohne Persistenz
   --url <url>           Kontext-URL, die im Headless-Tab geladen wird
@@ -107,8 +111,9 @@ Optionen:
 
 Beispiele:
   chaipi --check
-  chaipi --verbose "Erstelle einen kurzen 2-Zeiler über lokale KI"
-  cat /var/log/syslog | chaipi -V "Finde die 3 kritischsten Fehlermeldungen"
+  chaipi --stream "Schreibe eine kurze Geschichte über Unix-Pipes"
+  chaipi -s "Antworte ausschließlich als JSON" "Extrahiere Keys aus Logzeile"
+  cat /var/log/syslog | chaipi -t 0.2 "Finde die 3 kritischsten Fehlermeldungen"
 `);
 }
 
@@ -151,9 +156,13 @@ async function readStdin() {
 const rawArgs = process.argv.slice(2);
 let isCheckOnly = false;
 let isJsonOutput = false;
+let isStreamOutput = false;
 let isTempProfile = false;
 let customProfileDir = process.env.CHROME_USER_DATA_DIR || null;
 let customTargetUrl = null;
+let customSystemPrompt = null;
+let customTemperature = null;
+let customTopK = null;
 const positional = [];
 
 for (let i = 0; i < rawArgs.length; i++) {
@@ -170,8 +179,16 @@ for (let i = 0; i < rawArgs.length; i++) {
         isCheckOnly = true;
     } else if (arg === '--json') {
         isJsonOutput = true;
+    } else if (arg === '--stream') {
+        isStreamOutput = true;
     } else if (arg === '--temp-profile') {
         isTempProfile = true;
+    } else if ((arg === '--system' || arg === '-s') && rawArgs[i + 1]) {
+        customSystemPrompt = rawArgs[++i];
+    } else if ((arg === '--temperature' || arg === '-t') && rawArgs[i + 1]) {
+        customTemperature = parseFloat(rawArgs[++i]);
+    } else if (arg === '--top-k' && rawArgs[i + 1]) {
+        customTopK = parseInt(rawArgs[++i], 10);
     } else if (arg === '--profile' && rawArgs[i + 1]) {
         customProfileDir = rawArgs[++i];
     } else if (arg === '--url' && rawArgs[i + 1]) {
@@ -311,8 +328,15 @@ const chromeFlags = [
 ];
 
 let chromeProc = null;
+let activeWs = null;
 
 function cleanup() {
+    if (activeWs && activeWs.readyState === 1) {
+        try {
+            verboseLog('Sende CDP-Befehl Browser.close für sauberen Shutdown...');
+            activeWs.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
+        } catch (e) {}
+    }
     if (chromeProc) {
         verboseLog('Beende Chrome-Prozess (SIGTERM)...');
         try { chromeProc.kill('SIGTERM'); } catch (e) {}
@@ -405,13 +429,14 @@ async function run() {
 
     verboseLog(`Verbinde WebSocket zu Page-Target (URL: ${pageTab.url || targetUrl})...`);
     const ws = new WebSocket(pageTab.webSocketDebuggerUrl);
+    activeWs = ws;
     await new Promise((resolve, reject) => {
         ws.addEventListener('open', resolve);
         ws.addEventListener('error', reject);
     });
     verboseLog('WebSocket-Verbindung erfolgreich aufgebaut.');
 
-    // CDP Events für Console-Logs und Downloadfortschritt registrieren
+    // CDP Events für Console-Logs, Streaming und Downloadfortschritt registrieren
     let lastReportedPct = -1;
     ws.addEventListener('message', (event) => {
         try {
@@ -433,6 +458,10 @@ async function run() {
                             if (pct >= 100) {
                                 verboseProgress('\n');
                             }
+                        }
+                    } else if (evt.__chaipi_event === 'stream_delta') {
+                        if (isStreamOutput && typeof evt.delta === 'string') {
+                            process.stdout.write(evt.delta);
                         }
                     } else if (evt.__chaipi_event === 'create_start') {
                         if (evt.availability === 'downloadable' || evt.availability === 'downloading') {
@@ -510,6 +539,17 @@ async function run() {
                 }));
 
                 const createOptions = {};
+                if (${JSON.stringify(customSystemPrompt !== null)}) {
+                    createOptions.systemPrompt = ${JSON.stringify(customSystemPrompt)};
+                    createOptions.initialPrompts = [{ role: 'system', content: ${JSON.stringify(customSystemPrompt)} }];
+                }
+                if (${JSON.stringify(customTemperature !== null)}) {
+                    createOptions.temperature = ${Number(customTemperature)};
+                }
+                if (${JSON.stringify(customTopK !== null)}) {
+                    createOptions.topK = ${Number(customTopK)};
+                }
+
                 createOptions.monitor = (m) => {
                     const notify = (e) => {
                         console.log(JSON.stringify({
@@ -533,6 +573,29 @@ async function run() {
                     __chaipi_event: 'prompt_start', 
                     length: ${JSON.stringify(finalPrompt)}.length 
                 }));
+
+                if (${JSON.stringify(isStreamOutput)}) {
+                    if (typeof session.promptStreaming === 'function') {
+                        const stream = session.promptStreaming(${JSON.stringify(finalPrompt)});
+                        let accumulated = '';
+                        for await (const chunk of stream) {
+                            if (typeof chunk === 'string') {
+                                let delta = '';
+                                if (chunk.startsWith(accumulated)) {
+                                    delta = chunk.slice(accumulated.length);
+                                    accumulated = chunk;
+                                } else {
+                                    delta = chunk;
+                                    accumulated += chunk;
+                                }
+                                console.log(JSON.stringify({ __chaipi_event: 'stream_delta', delta }));
+                            }
+                        }
+                        console.log(JSON.stringify({ __chaipi_event: 'prompt_done' }));
+                        try { session.destroy(); } catch (e) {}
+                        return JSON.stringify({ success: true, text: '', streamed: true });
+                    }
+                }
 
                 const response = await session.prompt(${JSON.stringify(finalPrompt)});
                 console.log(JSON.stringify({ __chaipi_event: 'prompt_done' }));
@@ -564,15 +627,26 @@ async function run() {
 
     if (outputData.success) {
         verboseLog('Ausführung erfolgreich beendet.');
-        if (isJsonOutput) {
-            console.log(JSON.stringify({ success: true, output: outputData.text }, null, 2));
+        if (outputData.streamed) {
+            process.stdout.write('\n');
+        } else if (isJsonOutput) {
+            let parsedData = null;
+            try { parsedData = JSON.parse(outputData.text); } catch (e) {}
+            console.log(JSON.stringify({ 
+                success: true, 
+                data: parsedData !== null ? parsedData : outputData.text 
+            }, null, 2));
         } else {
             process.stdout.write(outputData.text + '\n');
         }
     } else {
         verboseLog(`Ausführungsfehler: ${outputData.error}`);
         if (isJsonOutput) {
-            console.error(JSON.stringify({ success: false, error: outputData.error, availability: outputData.availability }, null, 2));
+            console.error(JSON.stringify({ 
+                success: false, 
+                error: outputData.error, 
+                availability: outputData.availability 
+            }, null, 2));
         } else {
             console.error(`[chaipi Fehler] ${outputData.error}`);
         }

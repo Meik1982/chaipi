@@ -1,0 +1,34 @@
+# Maintainer: Meik <https://github.com/Meik1982>
+pkgname=chaipi
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano & WebGPU over CDP)"
+arch=('any')
+url="https://github.com/Meik1982/chaipi"
+license=('MIT')
+depends=('nodejs>=22.0.0')
+optdepends=(
+    'google-chrome: Google Chrome mit Gemini Nano On-Device Support'
+    'chromium: Chromium Browser Alternative'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    # Unterstützt sowohl Remote-Tarball als auch lokalen Quelltext-Build
+    if [ -d "$srcdir/$pkgname-$pkgver" ]; then
+        cd "$srcdir/$pkgname-$pkgver"
+    elif [ -d "$srcdir/$pkgname" ]; then
+        cd "$srcdir/$pkgname"
+    else
+        cd "$startdir/../.."
+    fi
+
+    # CLI-Binary installieren
+    install -Dm755 bin/chaipi.mjs "$pkgdir/usr/bin/chaipi"
+
+    # Dokumentation & Metadaten installieren
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 TODO.md "$pkgdir/usr/share/doc/$pkgname/TODO.md"
+    install -Dm644 package.json "$pkgdir/usr/share/$pkgname/package.json"
+}

@@ -85,13 +85,28 @@ cat data.txt | chaipi --json "Extrahiere Metriken"
 | Flag | Beschreibung |
 | :--- | :--- |
 | `--check` | Führt einen schnellen System- & Modell-Check via CDP durch (ohne Prompt). |
+| `--stream` | Gibt Tokens in Echtzeit direkt auf `stdout` aus (Streaming). |
+| `-s, --system <text>` | Definiert einen System-Prompt für die Modell-Session. |
+| `-t, --temperature <n>` | Steuert die Modell-Kreativität (z. B. `0.2` für Extraktion, `0.8` für Text). |
+| `--top-k <n>` | Begrenzt den Sampling-Pool des Modells. |
 | `-V, --verbose` | Gibt detaillierte Status- & Diagnose-Meldungen sowie Modell-Downloadfortschritte auf `stderr` aus. |
-| `--profile <pfad>` | Verwendet ein bestehendes Chrome-Profil (z. B. `~/.config/google-chrome`). |
-| `--temp-profile` | Startet Chrome mit einem isolierten, temporären Profil (Standard). |
+| `--profile <pfad>` | Verwendet ein bestimmtes Profilverzeichnis (Standard: `~/.cache/chaipi/profile`). |
+| `--temp-profile` | Startet Chrome mit einem isolierten, temporären Profil ohne Persistenz. |
 | `--url <url>` | Lädt eine benutzerdefinierte Webseite als Ausführungskontext. |
-| `--json` | Liefert die CLI-Antwort im standardisierten JSON-Format. |
+| `--json` | Liefert die CLI-Antwort im standardisierten JSON-Format (`{ success, data }`). |
 | `-v, --version` | Zeigt die Version von ChAIPi an. |
-| `-h, --help` | Zeigt die integrierte Hilfe. |
+| `-h, --help` | Zeigt den Hilfetext an. |
+
+---
+
+## 📦 Paketierung (Arch Linux / CachyOS)
+
+Für eine saubere native Installation über `pacman`:
+
+```bash
+cd dist/archlinux
+makepkg -si
+```
 
 ---
 

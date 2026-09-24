@@ -8,11 +8,12 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 
 const VERSION = '0.1.0';
+const DEFAULT_PROFILE_DIR = join(homedir(), '.cache', 'chaipi', 'profile');
 
 function printHelp() {
     console.log(`ChAIPi (Chrome AI Pipe) v${VERSION}
@@ -25,8 +26,8 @@ Verwendung:
 
 Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
-  --profile <pfad>      Verwendet ein bestehendes Chrome-Profilverzeichnis
-  --temp-profile        Erzwingt ein isoliertes temporäres Profil (Standard)
+  --profile <pfad>      Verwendet ein bestimmtes Profilverzeichnis (Standard: ~/.cache/chaipi/profile)
+  --temp-profile        Erzwingt ein isoliertes temporäres Profil ohne Persistenz
   --url <url>           Kontext-URL, die im Headless-Tab geladen wird
   --json                Gibt die Ausgabe als strukturiertes JSON zurück
   -V, --verbose         Ausführliche Diagnose- und Statusausgabe auf stderr
@@ -136,16 +137,18 @@ if (!isCheckOnly) {
     verboseLog(`Finaler Prompt vorbereitet (${finalPrompt.length} Zeichen).`);
 }
 
-// Profilpfad vorbereiten
+// Profilpfad vorbereiten: Standard ist persistenter Cache unter ~/.cache/chaipi/profile
 let activeProfileDir = customProfileDir;
 let createdTempDir = null;
 
-if (!activeProfileDir || isTempProfile) {
+if (isTempProfile) {
     createdTempDir = mkdtempSync(join(tmpdir(), 'chaipi-profile-'));
     activeProfileDir = createdTempDir;
     verboseLog(`Verwende isoliertes temporäres Profil: ${activeProfileDir}`);
-    verboseLog(`Hinweis: Bei temporären Profilen werden heruntergeladene Modelldaten beim Beenden gelöscht. Nutze '--profile <pfad>' für persistenten Cache.`);
+    verboseLog(`Hinweis: Bei temporären Profilen werden gecachte Modelldaten beim Beenden gelöscht.`);
 } else {
+    activeProfileDir = activeProfileDir || DEFAULT_PROFILE_DIR;
+    mkdirSync(activeProfileDir, { recursive: true });
     verboseLog(`Verwende persistentes Profilverzeichnis: ${activeProfileDir}`);
 }
 
@@ -166,8 +169,6 @@ const chromeFlags = [
     `--user-data-dir=${activeProfileDir}`,
     '--no-first-run',
     '--no-default-browser-check',
-    '--disable-background-networking',
-    '--disable-sync',
     '--disable-translate',
     '--enable-features=PromptAPIForGeminiNano:bypass_perf_requirement/true,OptimizationGuideModelDownloading',
     '--optimization-guide-on-device-model-execution-override',
@@ -271,6 +272,7 @@ async function run() {
     verboseLog('WebSocket-Verbindung erfolgreich aufgebaut.');
 
     // CDP Events für Console-Logs und Downloadfortschritt registrieren
+    let lastReportedPct = -1;
     ws.addEventListener('message', (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -279,12 +281,18 @@ async function run() {
                 if (typeof firstVal === 'string' && firstVal.startsWith('{"__chaipi_event":')) {
                     const evt = JSON.parse(firstVal);
                     if (evt.__chaipi_event === 'downloadprogress') {
-                        const loadedMb = (evt.loaded / (1024 * 1024)).toFixed(1);
-                        const totalMb = (evt.total / (1024 * 1024)).toFixed(1);
-                        const pct = evt.total > 0 ? Math.round((evt.loaded / evt.total) * 100) : 0;
-                        verboseProgress(`\r[chaipi verbose] Modell-Download: ${pct}% (${loadedMb} MB / ${totalMb} MB)...`);
-                        if (evt.loaded >= evt.total && evt.total > 0) {
-                            verboseProgress('\n');
+                        let pct = 0;
+                        if (evt.total === 1) {
+                            pct = Math.min(100, Math.round(evt.loaded * 100));
+                        } else if (evt.total > 0) {
+                            pct = Math.min(100, Math.round((evt.loaded / evt.total) * 100));
+                        }
+                        if (pct !== lastReportedPct) {
+                            lastReportedPct = pct;
+                            verboseProgress(`\r[chaipi verbose] Modell-Download: ${pct}% abgeschlossen...`);
+                            if (pct >= 100) {
+                                verboseProgress('\n');
+                            }
                         }
                     } else if (evt.__chaipi_event === 'create_start') {
                         if (evt.availability === 'downloadable' || evt.availability === 'downloading') {
@@ -363,14 +371,18 @@ async function run() {
 
                 const createOptions = {};
                 createOptions.monitor = (m) => {
-                    if (m && typeof m.addEventListener === 'function') {
-                        m.addEventListener('downloadprogress', (e) => {
-                            console.log(JSON.stringify({
-                                __chaipi_event: 'downloadprogress',
-                                loaded: e.loaded,
-                                total: e.total
-                            }));
-                        });
+                    const notify = (e) => {
+                        console.log(JSON.stringify({
+                            __chaipi_event: 'downloadprogress',
+                            loaded: e.loaded,
+                            total: e.total
+                        }));
+                    };
+                    if (m) {
+                        if (typeof m.addEventListener === 'function') {
+                            m.addEventListener('downloadprogress', notify);
+                        }
+                        m.ondownloadprogress = notify;
                     }
                 };
 

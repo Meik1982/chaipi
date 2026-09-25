@@ -102,7 +102,13 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Unterstützung im Daemon-Modus (`chaipi daemon start --http`, `chaipi.service`).
 
 ### Priorität 5: Kontext-Erweiterung & WebGPU-Engine
-- [ ] **Context Guard & Smart-Chunking (> 9.216 Tokens):**
+- [x] **Context Guard & Limitschutz:**
+  - Vorab-Prüfung via `session.measureContextUsage(prompt)`.
+  - Abwehr von Browser-Crashes bei Überschreitung des 9.216-Token Limits durch standardkonforme Ablehnung (`context_length_exceeded` / 400 Bad Request).
+- [x] **Warm-Session-Pooling (TTFT-Latenzoptimierung):**
+  - Vorab-Erzeugung sauberer Standard-Sessions (`window.__chaipi_warm_session`) im Hintergrund.
+  - Reduziert Time-to-First-Token um ~150–250ms bei wiederholten Anfragen.
+- [ ] **Smart-Chunking & Map-Reduce (> 9.216 Tokens):**
   - Automatisches Sliding-Window-Chunking / Map-Reduce für übergroße Logfiles.
 - [ ] **WebGPU Fallback Engine (nachgestellt):**
   - Integration einer leichtgewichtigen OnnxRuntime-Web- oder Transformers.js-Laufzeit auf der existierenden WebGPU-Runtime-Seite für Systeme ohne Gemini Nano Support.

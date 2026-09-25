@@ -91,13 +91,14 @@ test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
             assert.equal(reloaded.totalRequests, 2);
             assert.equal(reloaded.totalPromptTokens, 800);
             assert.equal(reloaded.totalCompletionTokens, 80);
-            assert.equal(reloaded.totalSavedTokens, 720); // (500-50) + (300-30)
+            assert.equal(reloaded.totalSavedTokens, 880); // (500+50) + (300+30)
 
             const metrics = computeStatsMetrics(reloaded);
             assert.equal(metrics.rpm, 2);
             assert.equal(metrics.tpm, 880); // (500+50) + (300+30)
             assert.equal(metrics.rpd, 2);
-            assert.equal(metrics.todaySavedTokens, 720);
+            assert.equal(metrics.todaySavedTokens, 880);
+            assert.equal(metrics.savedRequestsToday, 2);
             assert.ok(metrics.avgTokPerSec > 0);
         } finally {
             try { rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}

@@ -79,11 +79,14 @@ Lokale Aktivität:
   Aktuelle Rate (RPM):          ${metrics.rpm} Anfragen/Min
   Aktueller Durchsatz (TPM):    ${metrics.tpm.toLocaleString('de-DE')} Tokens/Min
   Durchschnitts-Speed:          ${metrics.avgTokPerSec} Tok/s
+  Prompt-Tokens heute:          ${metrics.todayPromptTokens.toLocaleString('de-DE')} Tokens
+  Output-Tokens heute:          ${metrics.todayCompletionTokens.toLocaleString('de-DE')} Tokens
 
-Cloud-Quota Ersparnis (Token Guard):
-  Eingesparte Tokens heute:     ~${metrics.todaySavedTokens.toLocaleString('de-DE')} Tokens
-  Eingesparte Tokens gesamt:    ~${metrics.totalSavedTokens.toLocaleString('de-DE')} Tokens
-  Gesamte Anfragen:             ${metrics.totalRequests}
+Cloud-Quota Ersparnis (Google AI Studio Guard):
+  Eingesparte Cloud-Anfragen:   ${metrics.savedRequestsToday} Requests (100% lokal abgefangen)
+  Eingesparte Tokens heute:     ${metrics.todaySavedTokens.toLocaleString('de-DE')} Tokens
+  Eingesparte Tokens gesamt:    ${metrics.totalSavedTokens.toLocaleString('de-DE')} Tokens
+  Geschätzte Ersparnis:         ~$${metrics.estimatedSavingsUsd} USD (gemessen an Cloud-Preisen)
 
 Persistente Datenbank: ~/.cache/chaipi/stats.json`);
 }

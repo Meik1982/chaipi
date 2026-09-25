@@ -8,6 +8,7 @@ import { VERSION, SOCKET_PATH, PID_PATH } from '../lib/constants.js';
 import { sanitizePipeInput, buildSecurePipePrompt } from '../lib/security.js';
 import { findChromeExecutable, cleanStaleSingletonLock } from '../lib/chrome.js';
 import { ensureRuntimeHtml } from '../lib/bridge.js';
+import { loadStats, recordUsage, computeStatsMetrics, formatStatsLine } from '../lib/stats.js';
 
 test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
     await t.test('1. Constants: Version & Pfade sind definiert', () => {
@@ -62,5 +63,60 @@ test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
         } finally {
             try { rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
         }
+    });
+
+    await t.test('6. Stats: recordUsage & computeStatsMetrics gleitendes Fenster', () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'chaipi-unit-stats-'));
+        const statsFile = join(tempDir, 'stats.json');
+        try {
+            const initial = loadStats(statsFile);
+            assert.equal(initial.totalRequests, 0);
+
+            // 1. Request simulieren: 500 Prompt-Tokens, 50 Completion-Tokens, 1000ms
+            recordUsage({
+                promptTokens: 500,
+                completionTokens: 50,
+                durationMs: 1000
+            }, statsFile);
+
+            // 2. Request simulieren: 300 Prompt-Tokens, 30 Completion-Tokens, 500ms
+            recordUsage({
+                promptTokens: 300,
+                completionTokens: 30,
+                durationMs: 500
+            }, statsFile);
+
+            const reloaded = loadStats(statsFile);
+            assert.equal(reloaded.totalRequests, 2);
+            assert.equal(reloaded.totalPromptTokens, 800);
+            assert.equal(reloaded.totalCompletionTokens, 80);
+            assert.equal(reloaded.totalSavedTokens, 720); // (500-50) + (300-30)
+
+            const metrics = computeStatsMetrics(reloaded);
+            assert.equal(metrics.rpm, 2);
+            assert.equal(metrics.tpm, 880); // (500+50) + (300+30)
+            assert.equal(metrics.rpd, 2);
+            assert.equal(metrics.todaySavedTokens, 720);
+            assert.ok(metrics.avgTokPerSec > 0);
+        } finally {
+            try { rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
+        }
+    });
+
+    await t.test('7. Stats: formatStatsLine formatiert Statuszeile', () => {
+        const line = formatStatsLine({
+            promptTokens: 120,
+            completionTokens: 15,
+            totalTokens: 135,
+            contextWindow: 9216,
+            durationMs: 350,
+            tokPerSec: 42.8
+        });
+        assert.ok(line.includes('[chaipi stats]'));
+        assert.ok(line.includes('Prompt: 120 Tok'));
+        assert.ok(line.includes('Output: 15 Tok'));
+        assert.ok(line.includes('Kontext: 135/9216'));
+        assert.ok(line.includes('Zeit: 350ms'));
+        assert.ok(line.includes('42.8 Tok/s'));
     });
 });

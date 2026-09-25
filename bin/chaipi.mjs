@@ -13,6 +13,7 @@ import { VERSION, SOCKET_PATH } from '../lib/constants.js';
 import { sanitizePipeInput, buildSecurePipePrompt } from '../lib/security.js';
 import { handleDaemonCommand } from '../lib/daemon.js';
 import { tryExecuteViaDaemon, runStandalone } from '../lib/client.js';
+import { recordUsage, computeStatsMetrics, formatStatsLine } from '../lib/stats.js';
 
 function printHelp() {
     console.log(`ChAIPi (Chrome AI Pipe) v${VERSION}
@@ -23,10 +24,12 @@ Verwendung:
   cat datei.log | chaipi [Optionen] "<Anweisung>"
   echo "Text" | chaipi "Fasse zusammen"
   chaipi daemon <start|stop|status|run>
+  chaipi stats
 
 Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
   --stream              Gibt Tokens in Echtzeit direkt auf stdout aus (Streaming)
+  --stats               Gibt Token- und Performance-Metriken auf stderr aus
   -s, --system <text>   Definiert einen System-Prompt für die Modell-Session
   -t, --temperature <n> Steuert die Modell-Kreativität (z. B. 0.2 für Extraktion, 0.8 für Text)
   --top-k <n>           Begrenzt den Sampling-Pool des Modells
@@ -39,19 +42,47 @@ Optionen:
   -v, --version         Zeigt die Versionsnummer an
   -h, --help            Zeigt diesen Hilfetext an
 
-Daemon-Verwaltung:
+Daemon-Verwaltung & Monitoring:
   chaipi daemon start   Startet den Hintergrund-Worker mit warmer Chrome-Instanz
   chaipi daemon stop    Beendet den Hintergrund-Worker
   chaipi daemon status  Zeigt den Status des Hintergrund-Workers an
   chaipi daemon run     Führt den Daemon im Vordergrund aus (Debugging)
+  chaipi stats          Zeigt Quota-Einsparungen und Token-Raten (RPM/TPM/RPD)
 
 Beispiele:
   chaipi --check
   chaipi daemon start
-  chaipi --stream "Schreibe eine kurze Geschichte über Unix-Pipes"
+  chaipi stats
+  chaipi --stats "Schreibe eine kurze Geschichte über Unix-Pipes"
   chaipi -s "Antworte ausschließlich als JSON" "Extrahiere Keys aus Logzeile"
   cat /var/log/syslog | chaipi -t 0.2 "Finde die 3 kritischsten Fehlermeldungen"
 `);
+}
+
+function showStatsDashboard(isJson) {
+    const metrics = computeStatsMetrics();
+    if (isJson) {
+        console.log(JSON.stringify({
+            success: true,
+            data: metrics
+        }, null, 2));
+        return;
+    }
+
+    console.log(`ChAIPi Token- & Quota-Statistiken
+
+Lokale Aktivität:
+  Heutige Anfragen (RPD):       ${metrics.rpd}
+  Aktuelle Rate (RPM):          ${metrics.rpm} Anfragen/Min
+  Aktueller Durchsatz (TPM):    ${metrics.tpm.toLocaleString('de-DE')} Tokens/Min
+  Durchschnitts-Speed:          ${metrics.avgTokPerSec} Tok/s
+
+Cloud-Quota Ersparnis (Token Guard):
+  Eingesparte Tokens heute:     ~${metrics.todaySavedTokens.toLocaleString('de-DE')} Tokens
+  Eingesparte Tokens gesamt:    ~${metrics.totalSavedTokens.toLocaleString('de-DE')} Tokens
+  Gesamte Anfragen:             ${metrics.totalRequests}
+
+Persistente Datenbank: ~/.cache/chaipi/stats.json`);
 }
 
 const rawArgs = process.argv.slice(2);
@@ -59,6 +90,8 @@ const rawArgs = process.argv.slice(2);
 let isCheckOnly = false;
 let isStreamOutput = false;
 let isJsonOutput = false;
+let isStatsOutput = false;
+let isStatsSubcommand = false;
 let isVerbose = Boolean(process.env.CHAIPI_VERBOSE || process.env.DEBUG);
 let noDaemon = false;
 let customSystemPrompt = null;
@@ -83,6 +116,10 @@ for (let i = 0; i < rawArgs.length; i++) {
         i++;
     } else if (arg === '--daemon-worker') {
         daemonSubcommand = 'worker';
+    } else if (arg === 'stats') {
+        isStatsSubcommand = true;
+    } else if (arg === '--stats') {
+        isStatsOutput = true;
     } else if (arg === '--no-daemon') {
         noDaemon = true;
     } else if (arg === '--check') {
@@ -135,7 +172,13 @@ async function readStdin() {
 }
 
 async function main() {
-    // 1. Daemon-Verwaltungsbefehle direkt abhandeln
+    // 1. Stats-Dashboard Befehl direkt abhandeln
+    if (isStatsSubcommand) {
+        showStatsDashboard(isJsonOutput);
+        process.exit(0);
+    }
+
+    // 2. Daemon-Verwaltungsbefehle direkt abhandeln
     if (daemonSubcommand) {
         const scriptPath = fileURLToPath(import.meta.url);
         await handleDaemonCommand(daemonSubcommand, isJsonOutput, { cliScript: scriptPath });
@@ -181,17 +224,28 @@ async function main() {
 
             const res = await tryExecuteViaDaemon(req, { isStreamOutput, verboseLog });
             if (res.success) {
+                if (res.usage) {
+                    recordUsage(res.usage);
+                }
                 if (res.streamed) {
                     process.stdout.write('\n');
                 } else if (isJsonOutput) {
                     let parsedData = null;
                     try { parsedData = JSON.parse(res.text); } catch (e) {}
-                    console.log(JSON.stringify({
+                    const jsonResp = {
                         success: true,
                         data: parsedData !== null ? parsedData : res.text
-                    }, null, 2));
+                    };
+                    if (res.usage) {
+                        jsonResp.usage = res.usage;
+                    }
+                    console.log(JSON.stringify(jsonResp, null, 2));
                 } else {
                     process.stdout.write(res.text + '\n');
+                }
+
+                if (isStatsOutput && res.usage) {
+                    process.stderr.write(formatStatsLine(res.usage) + '\n');
                 }
                 process.exit(0);
             } else {
@@ -202,11 +256,12 @@ async function main() {
         }
     }
 
-    // 3. Standalone-Ausführung als Fallback
+    // 4. Standalone-Ausführung als Fallback
     await runStandalone({
         isCheckOnly,
         isStreamOutput,
         isJsonOutput,
+        isStatsOutput,
         isVerbose,
         customProfileDir,
         isTempProfile,

@@ -166,4 +166,42 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         const parsedFinal = JSON.parse(statusFinal.stdout.trim());
         assert.equal(parsedFinal.data.running, false);
     });
+
+    await t.test('12. Token- und Quota-Statistiken (--stats & chaipi stats)', () => {
+        // 1. Stats Dashboard prüfen
+        const statsRes = spawnSync(CHAIPI_BIN, ['stats'], { encoding: 'utf8', timeout: 5000 });
+        assert.equal(statsRes.status, 0);
+        assert.ok(statsRes.stdout.includes('Token- & Quota-Statistiken'));
+        assert.ok(statsRes.stdout.includes('Heutige Anfragen'));
+
+        // 2. Stats im JSON-Format prüfen
+        const statsJsonRes = spawnSync(CHAIPI_BIN, ['stats', '--json'], { encoding: 'utf8', timeout: 5000 });
+        assert.equal(statsJsonRes.status, 0);
+        const parsedStats = JSON.parse(statsJsonRes.stdout.trim());
+        assert.equal(parsedStats.success, true);
+        assert.ok(typeof parsedStats.data.rpd === 'number');
+        assert.ok(typeof parsedStats.data.tpm === 'number');
+
+        // 3. Prompt mit --stats ausführen: Metriken müssen auf stderr erscheinen
+        const promptStats = spawnSync(CHAIPI_BIN, ['--stats', 'Antworte mit Ja'], {
+            encoding: 'utf8',
+            timeout: 25000
+        });
+        assert.equal(promptStats.status, 0);
+        assert.ok(promptStats.stderr.includes('[chaipi stats]'));
+        assert.ok(promptStats.stderr.includes('Prompt:'));
+        assert.ok(promptStats.stderr.includes('Kontext:'));
+
+        // 4. Prompt mit --json ausführen: usage-Objekt muss enthalten sein
+        const promptJson = spawnSync(CHAIPI_BIN, ['--json', 'Sag Hallo'], {
+            encoding: 'utf8',
+            timeout: 25000
+        });
+        assert.equal(promptJson.status, 0);
+        const parsedPrompt = JSON.parse(promptJson.stdout.trim());
+        assert.equal(parsedPrompt.success, true);
+        assert.ok(parsedPrompt.usage, 'Antwort muss ein usage-Objekt enthalten');
+        assert.ok(typeof parsedPrompt.usage.promptTokens === 'number');
+        assert.ok(typeof parsedPrompt.usage.completionTokens === 'number');
+    });
 });

@@ -103,11 +103,32 @@ chaipi daemon stop
 
 ---
 
+## 📊 Token-Tracking & Quota-Statistiken
+
+ChAIPi misst Tokens nativ über Chromes WICG-API (`session.measureContextUsage()` und `session.contextUsage`):
+
+```bash
+# Token-Metriken bei Inferenz auf stderr ausgeben (stdout bleibt pipe-sauber):
+chaipi --stats "Schreibe ein kurzes Haiku"
+# Ausgabe auf stderr:
+# [chaipi stats] Prompt: 14 Tok | Output: 18 Tok | Kontext: 32/9216 (0.3%) | Zeit: 310ms (58.1 Tok/s)
+
+# Dashboard für tägliche Quota-Einsparungen und Durchsatz abfragen:
+chaipi stats
+
+# Oder maschinenlesbar für Monitoring-Tools / Scripts:
+chaipi stats --json
+```
+
+---
+
 ## ⚙️ Optionen & Flags
 
 | Flag / Befehl | Beschreibung |
 | :--- | :--- |
 | `daemon <start\|stop\|status>` | Steuert den persistenten Hintergrund-Daemon mit warmer Chrome-Instanz. |
+| `stats` | Zeigt das Token-Accounting-Dashboard (RPD, RPM, TPM, Quota-Einsparung). |
+| `--stats` | Gibt Token-Verbrauch, Kontext-Auslastung und Generierungs-Speed auf `stderr` aus. |
 | `--no-daemon` | Erzwingt Standalone-Ausführung ohne Verbindung zum Hintergrund-Daemon. |
 | `--check` | Führt einen schnellen System- & Modell-Check via CDP durch (ohne Prompt). |
 | `--stream` | Gibt Tokens in Echtzeit direkt auf `stdout` aus (Streaming). |

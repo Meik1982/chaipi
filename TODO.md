@@ -84,12 +84,17 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
 
 ### Priorität 4: Architektur-Refactoring & Härtung
 - [x] **Zero-Dependency Modularisierung:**
-  - Aufteilung des 1.350-Zeilen-Monolithen in dedizierte Module: `lib/constants.js`, `lib/security.js`, `lib/chrome.js`, `lib/cdp.js`, `lib/bridge.js`, `lib/daemon.js`, `lib/client.js`.
+  - Aufteilung des 1.350-Zeilen-Monolithen in dedizierte Module: `lib/constants.js`, `lib/security.js`, `lib/chrome.js`, `lib/cdp.js`, `lib/bridge.js`, `lib/daemon.js`, `lib/client.js`, `lib/stats.js`.
   - Schlanker CLI-Orchestrator in `bin/chaipi.mjs` (~220 Zeilen).
   - Schnelle Unit-Tests in `tests/test_units.js` (Laufzeit < 10 ms).
 - [x] **Auto-Idle-Timeout für Hintergrund-Daemon:**
   - Automatisches Beenden des Daemons nach 15 Minuten Inaktivität (`DEFAULT_IDLE_TIMEOUT_MS`), um System-RAM zu schonen.
   - Timer-Reset bei jedem eingehenden Pipe-Request.
+- [x] **Token-Accounting & Quota-Monitoring (`--stats`, `chaipi stats`):**
+  - Native Messung über Chrome WICG `session.measureContextUsage()` und `session.contextUsage`.
+  - Überwachung des 9.216-Token Context-Windows und Warnung/Monitoring.
+  - Gleitendes 60s-Fenster für RPM/TPM sowie tägliches Tracking (RPD, Tokens Saved).
+  - Persistierung in `~/.cache/chaipi/stats.json` und maschinenlesbare JSON-Ausgabe.
 
 ### Priorität 5: WebGPU Engine-Erweiterung
 - [ ] **WebGPU Fallback Engine:**

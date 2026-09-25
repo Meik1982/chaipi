@@ -199,4 +199,50 @@ test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
             await serverInfo.close();
         }
     });
+
+    await t.test('10. Server: HTTP Error-Handling & Body-Validierung (400 Bad Request, 404)', async () => {
+        const testPort = 8398;
+        const serverInfo = await startHttpServer({ port: testPort, host: '127.0.0.1' });
+
+        try {
+            // 1. Malformed JSON
+            const badJsonRes = await fetch(`http://127.0.0.1:${testPort}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: 'INVALID_JSON{<'
+            });
+            assert.equal(badJsonRes.status, 400);
+            const badJsonData = await badJsonRes.json();
+            assert.equal(badJsonData.error.type, 'invalid_request_error');
+            assert.ok(badJsonData.error.message.includes('Ungültiges JSON'));
+
+            // 2. Leere Messages
+            const emptyMsgRes = await fetch(`http://127.0.0.1:${testPort}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: [] })
+            });
+            assert.equal(emptyMsgRes.status, 400);
+            const emptyMsgData = await emptyMsgRes.json();
+            assert.ok(emptyMsgData.error.message.includes('Parameter "messages"'));
+
+            // 3. Leerer Prompt in /v1/completions
+            const emptyPromptRes = await fetch(`http://127.0.0.1:${testPort}/v1/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: '' })
+            });
+            assert.equal(emptyPromptRes.status, 400);
+            const emptyPromptData = await emptyPromptRes.json();
+            assert.ok(emptyPromptData.error.message.includes('Parameter "prompt"'));
+
+            // 4. Nicht existierender Endpunkt
+            const notFoundRes = await fetch(`http://127.0.0.1:${testPort}/v1/nonexistent`);
+            assert.equal(notFoundRes.status, 404);
+            const notFoundData = await notFoundRes.json();
+            assert.equal(notFoundData.error.code, 404);
+        } finally {
+            await serverInfo.close();
+        }
+    });
 });

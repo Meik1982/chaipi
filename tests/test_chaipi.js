@@ -250,6 +250,55 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
             assert.equal(chatData.object, 'chat.completion');
             assert.ok(chatData.choices[0].message.content.length > 0);
             assert.ok(typeof chatData.usage.prompt_tokens === 'number');
+
+            // 3. Chat Completions mit SSE Streaming (stream: true)
+            const streamRes = await fetch(`http://127.0.0.1:${testPort}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'gemini-nano',
+                    stream: true,
+                    messages: [
+                        { role: 'user', content: 'Zähle kurz 1 und 2' }
+                    ]
+                })
+            });
+            assert.equal(streamRes.status, 200);
+            assert.ok(streamRes.headers.get('content-type').includes('text/event-stream'));
+            const textStream = await streamRes.text();
+            assert.ok(textStream.includes('data: {"id":"chatcmpl-'));
+            assert.ok(textStream.includes('"finish_reason":"stop"'));
+            assert.ok(textStream.includes('data: [DONE]'));
+
+            // 4. OpenAI Legacy Completions (/v1/completions)
+            const legacyRes = await fetch(`http://127.0.0.1:${testPort}/v1/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'gemini-nano',
+                    prompt: 'Sag Test'
+                })
+            });
+            assert.equal(legacyRes.status, 200);
+            const legacyData = await legacyRes.json();
+            assert.equal(legacyData.object, 'text_completion');
+            assert.ok(legacyData.choices[0].text.length > 0);
+
+            // 5. Parallele Anfragen (Concurrency & Queue Verifikation)
+            const [conA, conB] = await Promise.all([
+                fetch(`http://127.0.0.1:${testPort}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: [{ role: 'user', content: 'Sag A' }] })
+                }),
+                fetch(`http://127.0.0.1:${testPort}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: [{ role: 'user', content: 'Sag B' }] })
+                })
+            ]);
+            assert.equal(conA.status, 200);
+            assert.equal(conB.status, 200);
         } finally {
             serverProc.kill('SIGTERM');
         }

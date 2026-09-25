@@ -8,12 +8,20 @@
  */
 
 import { spawn, execSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
+import { 
+    mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, 
+    existsSync, symlinkSync, unlinkSync, openSync, readlinkSync, lstatSync 
+} from 'node:fs';
 import { tmpdir, homedir, platform } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import net from 'node:net';
 
 const VERSION = '0.1.0';
-const DEFAULT_PROFILE_DIR = join(homedir(), '.cache', 'chaipi', 'profile');
+const CACHE_DIR = join(homedir(), '.cache', 'chaipi');
+const DEFAULT_PROFILE_DIR = join(CACHE_DIR, 'profile');
+const SOCKET_PATH = join(CACHE_DIR, 'chaipi.sock');
+const PID_PATH = join(CACHE_DIR, 'chaipi.pid');
 
 /**
  * Ermittelt dynamisch den Pfad zur Chrome-/Chromium-Binary.
@@ -94,6 +102,7 @@ Verwendung:
   chaipi [Optionen] "<Prompt>"
   cat datei.log | chaipi [Optionen] "<Anweisung>"
   echo "Text" | chaipi "Fasse zusammen"
+  chaipi daemon <start|stop|status|run>
 
 Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
@@ -101,6 +110,7 @@ Optionen:
   -s, --system <text>   Definiert einen System-Prompt für die Modell-Session
   -t, --temperature <n> Steuert die Modell-Kreativität (z. B. 0.2 für Extraktion, 0.8 für Text)
   --top-k <n>           Begrenzt den Sampling-Pool des Modells
+  --no-daemon           Erzwingt Standalone-Ausführung ohne Hintergrund-Daemon
   --profile <pfad>      Verwendet ein bestimmtes Profilverzeichnis (Standard: ~/.cache/chaipi/profile)
   --temp-profile        Erzwingt ein isoliertes temporäres Profil ohne Persistenz
   --url <url>           Kontext-URL, die im Headless-Tab geladen wird
@@ -109,8 +119,15 @@ Optionen:
   -v, --version         Zeigt die Versionsnummer an
   -h, --help            Zeigt diesen Hilfetext an
 
+Daemon-Verwaltung:
+  chaipi daemon start   Startet den Hintergrund-Worker mit warmer Chrome-Instanz
+  chaipi daemon stop    Beendet den Hintergrund-Worker
+  chaipi daemon status  Zeigt den Status des Hintergrund-Workers an
+  chaipi daemon run     Führt den Daemon im Vordergrund aus (Debugging)
+
 Beispiele:
   chaipi --check
+  chaipi daemon start
   chaipi --stream "Schreibe eine kurze Geschichte über Unix-Pipes"
   chaipi -s "Antworte ausschließlich als JSON" "Extrahiere Keys aus Logzeile"
   cat /var/log/syslog | chaipi -t 0.2 "Finde die 3 kritischsten Fehlermeldungen"
@@ -152,17 +169,59 @@ async function readStdin() {
     });
 }
 
+/**
+ * Sendet eine JSON-Nachricht an den Unix Domain Socket und wartet auf eine Zeile als Antwort.
+ */
+function queryDaemonSocket(payload, timeoutMs = 2500) {
+    return new Promise((resolve, reject) => {
+        if (!existsSync(SOCKET_PATH)) {
+            return reject(new Error('Socket existiert nicht.'));
+        }
+
+        const client = net.createConnection(SOCKET_PATH, () => {
+            client.write(JSON.stringify(payload) + '\n');
+        });
+
+        let buffer = '';
+        const timer = setTimeout(() => {
+            client.destroy();
+            reject(new Error(`Timeout (${timeoutMs}ms) beim Warten auf Daemon-Antwort.`));
+        }, timeoutMs);
+
+        client.on('data', (chunk) => {
+            buffer += chunk.toString();
+            if (buffer.includes('\n')) {
+                clearTimeout(timer);
+                client.destroy();
+                try {
+                    const parsed = JSON.parse(buffer.trim().split('\n')[0]);
+                    resolve(parsed);
+                } catch (e) {
+                    reject(e);
+                }
+            }
+        });
+
+        client.on('error', (err) => {
+            clearTimeout(timer);
+            reject(err);
+        });
+    });
+}
+
 // Argument-Parsing
 const rawArgs = process.argv.slice(2);
 let isCheckOnly = false;
 let isJsonOutput = false;
 let isStreamOutput = false;
 let isTempProfile = false;
+let useDaemon = true;
 let customProfileDir = process.env.CHROME_USER_DATA_DIR || null;
 let customTargetUrl = null;
 let customSystemPrompt = null;
 let customTemperature = null;
 let customTopK = null;
+let daemonSubcommand = null;
 const positional = [];
 
 for (let i = 0; i < rawArgs.length; i++) {
@@ -181,8 +240,23 @@ for (let i = 0; i < rawArgs.length; i++) {
         isJsonOutput = true;
     } else if (arg === '--stream') {
         isStreamOutput = true;
+    } else if (arg === '--no-daemon') {
+        useDaemon = false;
     } else if (arg === '--temp-profile') {
         isTempProfile = true;
+        useDaemon = false;
+    } else if (arg === 'daemon') {
+        daemonSubcommand = rawArgs[i + 1] && !rawArgs[i + 1].startsWith('-') ? rawArgs[++i] : 'status';
+    } else if (arg === '--daemon-worker') {
+        daemonSubcommand = 'worker';
+    } else if (arg === '--daemon-start') {
+        daemonSubcommand = 'start';
+    } else if (arg === '--daemon-stop') {
+        daemonSubcommand = 'stop';
+    } else if (arg === '--daemon-status') {
+        daemonSubcommand = 'status';
+    } else if (arg === '--daemon') {
+        daemonSubcommand = rawArgs[i + 1] && !rawArgs[i + 1].startsWith('-') ? rawArgs[++i] : 'status';
     } else if ((arg === '--system' || arg === '-s') && rawArgs[i + 1]) {
         customSystemPrompt = rawArgs[++i];
     } else if ((arg === '--temperature' || arg === '-t') && rawArgs[i + 1]) {
@@ -191,10 +265,20 @@ for (let i = 0; i < rawArgs.length; i++) {
         customTopK = parseInt(rawArgs[++i], 10);
     } else if (arg === '--profile' && rawArgs[i + 1]) {
         customProfileDir = rawArgs[++i];
+        useDaemon = false;
     } else if (arg === '--url' && rawArgs[i + 1]) {
         customTargetUrl = rawArgs[++i];
+        useDaemon = false;
     } else {
         positional.push(arg);
+    }
+}
+
+// 1. Daemon-Verwaltungsbefehle direkt abhandeln
+if (daemonSubcommand) {
+    await handleDaemonCommand(daemonSubcommand, isJsonOutput);
+    if (daemonSubcommand !== 'worker' && daemonSubcommand !== 'run') {
+        process.exit(0);
     }
 }
 
@@ -234,6 +318,61 @@ if (stdinData && stdinData.trim()) {
 if (!isCheckOnly) {
     verboseLog(`Finaler Prompt vorbereitet (${finalPrompt.length} Zeichen).`);
 }
+
+// 2. Transparente Ausführung über laufenden Daemon (falls aktiv)
+if (useDaemon && !isTempProfile && !customProfileDir && existsSync(SOCKET_PATH)) {
+    try {
+        verboseLog('Laufender Daemon-Socket erkannt. Versuche IPC-Ausführung...');
+        const daemonReq = {
+            action: isCheckOnly ? 'check' : 'prompt',
+            prompt: finalPrompt,
+            systemPrompt: customSystemPrompt,
+            temperature: customTemperature,
+            topK: customTopK,
+            stream: isStreamOutput
+        };
+        const res = await tryExecuteViaDaemon(daemonReq, { isStreamOutput });
+        if (res.success) {
+            verboseLog('Ausführung über ChAIPi Daemon erfolgreich beendet.');
+            if (res.streamed) {
+                process.stdout.write('\n');
+            } else if (isJsonOutput) {
+                if (isCheckOnly) {
+                    const parsedData = JSON.parse(res.text);
+                    console.log(JSON.stringify({ success: true, data: parsedData }, null, 2));
+                } else {
+                    let parsedData = null;
+                    try { parsedData = JSON.parse(res.text); } catch (e) {}
+                    console.log(JSON.stringify({ 
+                        success: true, 
+                        data: parsedData !== null ? parsedData : res.text 
+                    }, null, 2));
+                }
+            } else {
+                process.stdout.write(res.text + '\n');
+            }
+            process.exit(0);
+        } else {
+            verboseLog(`Daemon meldete Fehler: ${res.error}`);
+            if (isJsonOutput) {
+                console.error(JSON.stringify({ 
+                    success: false, 
+                    error: res.error, 
+                    availability: res.availability 
+                }, null, 2));
+            } else {
+                console.error(`[chaipi Fehler] ${res.error}`);
+            }
+            process.exit(2);
+        }
+    } catch (err) {
+        verboseLog(`Verbindung zum Daemon fehlgeschlagen (${err.message}). Falle auf Standalone-Ausführung zurück...`);
+    }
+}
+
+// -------------------------------------------------------------
+// STANDALONE AUSFÜHRUNG (Fallback oder wenn kein Daemon aktiv ist)
+// -------------------------------------------------------------
 
 function seedExistingModelIfAvailable(profileDir) {
     const knownChromePaths = [
@@ -283,6 +422,43 @@ function seedExistingModelIfAvailable(profileDir) {
         }
     }
     return false;
+}
+
+function cleanStaleSingletonLock(profileDir) {
+    if (!profileDir) return;
+    const lockPath = join(profileDir, 'SingletonLock');
+    let isLink = false;
+    try {
+        isLink = lstatSync(lockPath).isSymbolicLink();
+    } catch (e) {
+        return;
+    }
+
+    if (isLink) {
+        try {
+            const linkTarget = readlinkSync(lockPath);
+            const match = linkTarget.match(/-(\d+)$/);
+            if (match) {
+                const pid = parseInt(match[1], 10);
+                try {
+                    process.kill(pid, 0);
+                    if (profileDir === DEFAULT_PROFILE_DIR) {
+                        try { process.kill(pid, 'SIGKILL'); } catch (err) {}
+                    } else {
+                        return;
+                    }
+                } catch (e) {
+                    // Prozess existiert nicht mehr
+                }
+            }
+            try { unlinkSync(lockPath); } catch (e) {}
+            const cookiePath = join(profileDir, 'SingletonCookie');
+            const sockPath = join(profileDir, 'SingletonSocket');
+            try { unlinkSync(cookiePath); } catch (e) {}
+            try { unlinkSync(sockPath); } catch (e) {}
+            verboseLog('Veralteter Chrome SingletonLock erfolgreich bereinigt.');
+        } catch (e) {}
+    }
 }
 
 // Profilpfad vorbereiten: Standard ist persistenter Cache unter ~/.cache/chaipi/profile
@@ -402,6 +578,7 @@ function sendCdpCommand(ws, method, params = {}) {
 
 async function run() {
     const chromeExe = findChromeExecutable();
+    cleanStaleSingletonLock(activeProfileDir);
     verboseLog(`Starte Chrome-Subprozess (${chromeExe})...`);
     chromeProc = spawn(chromeExe, chromeFlags, {
         stdio: ['ignore', 'ignore', isVerbose ? 'pipe' : 'ignore']
@@ -652,6 +829,533 @@ async function run() {
         }
         process.exit(2);
     }
+}
+
+// -------------------------------------------------------------
+// DAEMON IPC & WORKER IMPLEMENTIERUNG
+// -------------------------------------------------------------
+
+function tryExecuteViaDaemon(req, options) {
+    return new Promise((resolve, reject) => {
+        if (!existsSync(SOCKET_PATH)) {
+            return reject(new Error('Daemon Socket existiert nicht.'));
+        }
+
+        const client = net.createConnection(SOCKET_PATH, () => {
+            verboseLog('Mit laufendem ChAIPi Daemon verbunden. Sende Anfrage über IPC-Socket...');
+            client.write(JSON.stringify(req) + '\n');
+        });
+
+        client.setTimeout(60000); // 60s Timeout für Inferenz
+        let buffer = '';
+
+        client.on('timeout', () => {
+            client.destroy();
+            reject(new Error('Timeout bei Kommunikation mit ChAIPi Daemon.'));
+        });
+
+        client.on('data', (chunk) => {
+            buffer += chunk.toString();
+            if (buffer.includes('\n')) {
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    let msg;
+                    try {
+                        msg = JSON.parse(line.trim());
+                    } catch (e) { continue; }
+
+                    if (msg.type === 'delta') {
+                        if (options.isStreamOutput && typeof msg.delta === 'string') {
+                            process.stdout.write(msg.delta);
+                        }
+                    } else if (msg.type === 'result' || msg.type === 'error') {
+                        client.destroy();
+                        resolve(msg);
+                        return;
+                    }
+                }
+            }
+        });
+
+        client.on('error', (err) => {
+            reject(err);
+        });
+    });
+}
+
+async function handleDaemonCommand(action, isJson) {
+    if (action === 'start') {
+        try {
+            const status = await queryDaemonSocket({ action: 'status' }, 1000);
+            if (status && status.success) {
+                console.log(`ChAIPi Daemon läuft bereits (PID: ${status.pid}, Socket: ${SOCKET_PATH}).`);
+                process.exit(0);
+            }
+        } catch (e) {}
+
+        if (existsSync(SOCKET_PATH)) {
+            try { unlinkSync(SOCKET_PATH); } catch (e) {}
+        }
+        if (existsSync(PID_PATH)) {
+            try { unlinkSync(PID_PATH); } catch (e) {}
+        }
+
+        mkdirSync(CACHE_DIR, { recursive: true });
+        const logPath = join(CACHE_DIR, 'daemon.log');
+        const logFd = openSync(logPath, 'a');
+
+        const scriptPath = fileURLToPath(import.meta.url);
+        const child = spawn(process.execPath, [scriptPath, '--daemon-worker'], {
+            detached: true,
+            stdio: ['ignore', logFd, logFd]
+        });
+        child.unref();
+
+        for (let i = 0; i < 75; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            try {
+                const status = await queryDaemonSocket({ action: 'status' }, 500);
+                if (status && status.success) {
+                    console.log(`ChAIPi Daemon erfolgreich im Hintergrund gestartet (PID: ${status.pid}, Socket: ${SOCKET_PATH}).`);
+                    process.exit(0);
+                }
+            } catch (e) {}
+        }
+
+        console.error('[chaipi Fehler] Daemon-Start hat das Zeitlimit von 15s überschritten. Logs in ' + logPath);
+        process.exit(1);
+    } else if (action === 'stop') {
+        let stopped = false;
+        try {
+            const res = await queryDaemonSocket({ action: 'stop' }, 2000);
+            if (res && res.success) {
+                stopped = true;
+            }
+        } catch (e) {}
+
+        if (!stopped && existsSync(PID_PATH)) {
+            try {
+                const pid = parseInt(readFileSync(PID_PATH, 'utf8').trim(), 10);
+                if (!isNaN(pid)) {
+                    process.kill(pid, 'SIGTERM');
+                    stopped = true;
+                }
+            } catch (e) {}
+        }
+
+        for (let i = 0; i < 20; i++) {
+            if (!existsSync(SOCKET_PATH) && !existsSync(PID_PATH)) break;
+            await new Promise(r => setTimeout(r, 100));
+        }
+        if (existsSync(SOCKET_PATH)) { try { unlinkSync(SOCKET_PATH); } catch (e) {} }
+        if (existsSync(PID_PATH)) { try { unlinkSync(PID_PATH); } catch (e) {} }
+
+        if (stopped) {
+            console.log('ChAIPi Daemon wurde beendet.');
+        } else {
+            console.log('ChAIPi Daemon läuft nicht.');
+        }
+        process.exit(0);
+    } else if (action === 'status') {
+        try {
+            const status = await queryDaemonSocket({ action: 'status' }, 1500);
+            if (status && status.success) {
+                if (isJson) {
+                    console.log(JSON.stringify({
+                        success: true,
+                        data: {
+                            running: true,
+                            pid: status.pid,
+                            uptime: Math.round(status.uptime),
+                            availability: status.availability,
+                            socket: SOCKET_PATH
+                        }
+                    }, null, 2));
+                } else {
+                    console.log(`ChAIPi Daemon ist aktiv.
+  PID:          ${status.pid}
+  Uptime:       ${Math.round(status.uptime)}s
+  Modell:       Gemini Nano (${status.availability})
+  Socket:       ${SOCKET_PATH}`);
+                }
+                process.exit(0);
+            }
+        } catch (e) {}
+
+        if (isJson) {
+            console.log(JSON.stringify({
+                success: true,
+                data: {
+                    running: false
+                }
+            }, null, 2));
+        } else {
+            console.log('ChAIPi Daemon läuft nicht.');
+        }
+        process.exit(0);
+    } else if (action === 'run' || action === 'worker') {
+        await runDaemonWorker();
+    } else {
+        console.error(`Unbekannte Daemon-Aktion: ${action}. Erlaubt: start, stop, status, run`);
+        process.exit(1);
+    }
+}
+
+async function runDaemonWorker() {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    mkdirSync(DEFAULT_PROFILE_DIR, { recursive: true });
+
+    if (existsSync(SOCKET_PATH)) {
+        try {
+            const status = await queryDaemonSocket({ action: 'status' }, 500);
+            if (status && status.success) {
+                console.error(`Daemon läuft bereits (PID: ${status.pid}). Abbruch.`);
+                process.exit(1);
+            }
+        } catch (e) {
+            try { unlinkSync(SOCKET_PATH); } catch (err) {}
+        }
+    }
+
+    writeFileSync(PID_PATH, String(process.pid));
+
+    let chromeProc = null;
+    let ws = null;
+    let cachedAvailability = 'unknown';
+    let server = null;
+    let activeStreamClient = null;
+
+    function cleanupDaemon() {
+        if (ws && ws.readyState === 1) {
+            try {
+                ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
+            } catch (e) {}
+        }
+        if (chromeProc) {
+            try { chromeProc.kill('SIGTERM'); } catch (e) {}
+        }
+        if (server) {
+            try { server.close(); } catch (e) {}
+        }
+        if (existsSync(SOCKET_PATH)) {
+            try { unlinkSync(SOCKET_PATH); } catch (e) {}
+        }
+        if (existsSync(PID_PATH)) {
+            try { unlinkSync(PID_PATH); } catch (e) {}
+        }
+    }
+
+    process.on('SIGINT', () => { cleanupDaemon(); process.exit(0); });
+    process.on('SIGTERM', () => { cleanupDaemon(); process.exit(0); });
+
+    try {
+        seedExistingModelIfAvailable(DEFAULT_PROFILE_DIR);
+
+    const runtimeHtmlPath = join(DEFAULT_PROFILE_DIR, 'chaipi-runtime.html');
+    if (!existsSync(runtimeHtmlPath)) {
+        writeFileSync(runtimeHtmlPath, '<!DOCTYPE html><html><head><meta charset="utf-8"><title>ChAIPi Runtime</title></head><body>ChAIPi On-Device AI Runtime</body></html>\n');
+    }
+    const targetUrl = `file://${runtimeHtmlPath}`;
+    const remoteDebuggingPort = 9400 + Math.floor(Math.random() * 500);
+
+    const chromeFlags = [
+        '--headless=new',
+        `--remote-debugging-port=${remoteDebuggingPort}`,
+        `--user-data-dir=${DEFAULT_PROFILE_DIR}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-translate',
+        '--enable-features=PromptAPIForGeminiNano:bypass_perf_requirement/true,OptimizationGuideModelDownloading',
+        '--optimization-guide-on-device-model-execution-override',
+        '--enable-unsafe-webgpu',
+        targetUrl
+    ];
+
+    const chromeExe = findChromeExecutable();
+    cleanStaleSingletonLock(DEFAULT_PROFILE_DIR);
+    chromeProc = spawn(chromeExe, chromeFlags, {
+        stdio: ['ignore', 'ignore', 'ignore']
+    });
+
+    const browserWsUrl = await waitForCdpEndpoint(remoteDebuggingPort);
+    const tabsRes = await fetch(`http://127.0.0.1:${remoteDebuggingPort}/json/list`);
+    const tabs = await tabsRes.json();
+    const pageTab = tabs.find(t => t.type === 'page') || tabs[0];
+    if (!pageTab || !pageTab.webSocketDebuggerUrl) {
+        cleanupDaemon();
+        throw new Error('Kein Page-Target in Chrome gefunden.');
+    }
+
+    ws = new WebSocket(pageTab.webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => {
+        ws.addEventListener('open', resolve);
+        ws.addEventListener('error', reject);
+    });
+
+    // CDP Event listener
+    ws.addEventListener('message', (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.method === 'Runtime.consoleAPICalled') {
+                const firstVal = data.params?.args?.[0]?.value;
+                if (typeof firstVal === 'string' && firstVal.startsWith('{"__chaipi_event":')) {
+                    const evt = JSON.parse(firstVal);
+                    if (evt.__chaipi_event === 'stream_delta' && activeStreamClient) {
+                        try {
+                            activeStreamClient.write(JSON.stringify({ type: 'delta', delta: evt.delta }) + '\n');
+                        } catch (e) {}
+                    }
+                }
+            }
+        } catch (e) {}
+    });
+
+    await sendCdpCommand(ws, 'Runtime.enable');
+
+    // Modell-Verfügbarkeit prüfen
+    const checkEval = `(async () => {
+        const getLm = () => {
+            if (typeof LanguageModel !== 'undefined') return { api: LanguageModel, type: 'standard' };
+            if (window.ai && window.ai.languageModel) return { api: window.ai.languageModel, type: 'legacy' };
+            return null;
+        };
+        const entry = getLm();
+        if (!entry) return 'unavailable';
+        try {
+            if (typeof entry.api.availability === 'function') return await entry.api.availability();
+            if (typeof entry.api.capabilities === 'function') {
+                const caps = await entry.api.capabilities();
+                return caps.available || caps.readily || 'available';
+            }
+        } catch (e) { return 'error: ' + e.message; }
+        return 'unknown';
+    })()`;
+
+    for (let i = 0; i < 20; i++) {
+        try {
+            const checkRes = await sendCdpCommand(ws, 'Runtime.evaluate', {
+                expression: checkEval,
+                awaitPromise: true,
+                returnByValue: true
+            });
+            cachedAvailability = checkRes?.result?.value || 'unknown';
+            if (cachedAvailability !== 'unavailable' && !cachedAvailability.startsWith('error:')) {
+                break;
+            }
+        } catch (e) {
+            cachedAvailability = 'unknown';
+        }
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    // Queue für serielle Abarbeitung
+    let requestQueue = Promise.resolve();
+    function enqueue(task) {
+        const next = requestQueue.then(task, task);
+        requestQueue = next.catch(() => {});
+        return next;
+    }
+
+    server = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk) => {
+            buffer += chunk.toString();
+            if (buffer.includes('\n')) {
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    let req;
+                    try {
+                        req = JSON.parse(line.trim());
+                    } catch (e) {
+                        socket.write(JSON.stringify({ type: 'error', error: 'Invalid JSON' }) + '\n');
+                        socket.end();
+                        return;
+                    }
+
+                    if (req.action === 'status' || req.action === 'ping') {
+                        socket.write(JSON.stringify({
+                            type: 'status',
+                            success: true,
+                            pid: process.pid,
+                            uptime: process.uptime(),
+                            availability: cachedAvailability,
+                            model: 'Gemini Nano',
+                            socket: SOCKET_PATH
+                        }) + '\n');
+                        socket.end();
+                    } else if (req.action === 'stop') {
+                        socket.write(JSON.stringify({ type: 'stopping', success: true }) + '\n');
+                        socket.end();
+                        setTimeout(() => {
+                            cleanupDaemon();
+                            process.exit(0);
+                        }, 100);
+                    } else if (req.action === 'prompt' || req.action === 'check') {
+                        enqueue(async () => {
+                            try {
+                                if (req.stream) {
+                                    activeStreamClient = socket;
+                                }
+                                const result = await executePromptInWarmChrome(ws, req);
+                                if (result.success) {
+                                    socket.write(JSON.stringify({
+                                        type: 'result',
+                                        success: true,
+                                        text: result.text,
+                                        streamed: result.streamed
+                                    }) + '\n');
+                                } else {
+                                    socket.write(JSON.stringify({
+                                        type: 'error',
+                                        success: false,
+                                        error: result.error,
+                                        availability: result.availability || cachedAvailability
+                                    }) + '\n');
+                                }
+                            } catch (err) {
+                                socket.write(JSON.stringify({
+                                    type: 'error',
+                                    success: false,
+                                    error: err.message,
+                                    availability: cachedAvailability
+                                }) + '\n');
+                            } finally {
+                                activeStreamClient = null;
+                                socket.end();
+                            }
+                        });
+                    }
+                }
+            }
+        });
+    });
+
+    server.listen(SOCKET_PATH, () => {
+        verboseLog(`Daemon hört auf Unix Domain Socket: ${SOCKET_PATH}`);
+    });
+
+    return new Promise(() => {});
+    } catch (err) {
+        console.error(`[chaipi Daemon Fatal] ${err.stack || err.message}`);
+        cleanupDaemon();
+        process.exit(1);
+    }
+}
+
+async function executePromptInWarmChrome(ws, req) {
+    const isCheckOnly = req.action === 'check';
+    const promptText = req.prompt || '';
+    const customSystemPrompt = req.systemPrompt || null;
+    const customTemperature = req.temperature !== undefined ? req.temperature : null;
+    const customTopK = req.topK !== undefined ? req.topK : null;
+    const isStreamOutput = Boolean(req.stream);
+
+    const evalCode = `
+        (async () => {
+            const getLm = () => {
+                if (typeof LanguageModel !== 'undefined') return { api: LanguageModel, type: 'standard' };
+                if (window.ai && window.ai.languageModel) return { api: window.ai.languageModel, type: 'legacy' };
+                return null;
+            };
+
+            const lmEntry = getLm();
+            if (!lmEntry) {
+                return JSON.stringify({ 
+                    success: false, 
+                    error: "Chrome Prompt API (LanguageModel / window.ai) ist in dieser Session nicht verfügbar. Flags prüfen." 
+                });
+            }
+
+            const { api: lm, type } = lmEntry;
+
+            let availability = 'unknown';
+            try {
+                if (typeof lm.availability === 'function') {
+                    availability = await lm.availability();
+                } else if (typeof lm.capabilities === 'function') {
+                    const caps = await lm.capabilities();
+                    availability = caps.available || caps.readily || 'available';
+                }
+            } catch (e) {
+                availability = 'check_failed: ' + e.message;
+            }
+
+            if (${JSON.stringify(isCheckOnly)}) {
+                return JSON.stringify({
+                    success: true,
+                    text: JSON.stringify({
+                        name: "ChAIPi",
+                        version: "${VERSION}",
+                        apiType: type,
+                        availability: availability,
+                        webGpu: typeof navigator.gpu !== 'undefined'
+                    }, null, 2)
+                });
+            }
+
+            try {
+                const createOptions = {};
+                if (${JSON.stringify(customSystemPrompt !== null)}) {
+                    createOptions.systemPrompt = ${JSON.stringify(customSystemPrompt)};
+                    createOptions.initialPrompts = [{ role: 'system', content: ${JSON.stringify(customSystemPrompt)} }];
+                }
+                if (${JSON.stringify(customTemperature !== null)}) {
+                    createOptions.temperature = ${Number(customTemperature)};
+                }
+                if (${JSON.stringify(customTopK !== null)}) {
+                    createOptions.topK = ${Number(customTopK)};
+                }
+
+                const session = await lm.create(createOptions);
+
+                if (${JSON.stringify(isStreamOutput)}) {
+                    if (typeof session.promptStreaming === 'function') {
+                        const stream = session.promptStreaming(${JSON.stringify(promptText)});
+                        let accumulated = '';
+                        for await (const chunk of stream) {
+                            if (typeof chunk === 'string') {
+                                let delta = '';
+                                if (chunk.startsWith(accumulated)) {
+                                    delta = chunk.slice(accumulated.length);
+                                    accumulated = chunk;
+                                } else {
+                                    delta = chunk;
+                                    accumulated += chunk;
+                                }
+                                console.log(JSON.stringify({ __chaipi_event: 'stream_delta', delta }));
+                            }
+                        }
+                        try { session.destroy(); } catch (e) {}
+                        return JSON.stringify({ success: true, text: '', streamed: true });
+                    }
+                }
+
+                const response = await session.prompt(${JSON.stringify(promptText)});
+                try { session.destroy(); } catch (e) {}
+                return JSON.stringify({ success: true, text: response });
+            } catch (err) {
+                return JSON.stringify({ 
+                    success: false, 
+                    error: err.message || String(err),
+                    availability: availability 
+                });
+            }
+        })()
+    `;
+
+    const evalResult = await sendCdpCommand(ws, 'Runtime.evaluate', {
+        expression: evalCode,
+        userGesture: true,
+        awaitPromise: true,
+        returnByValue: true
+    });
+
+    const outputData = JSON.parse(evalResult?.result?.value || '{}');
+    return outputData;
 }
 
 run().catch((err) => {

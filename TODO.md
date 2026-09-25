@@ -65,10 +65,13 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - `--top-k`: Begrenzung des Token-Pools.
 
 ### Priorität 2: Performance & Latenz (Daemon-Modus)
-- [ ] **Daemon / Background Worker Mode (`--daemon`):**
-  - Option zum Starten einer persistenten, warmen Chrome-Instanz im Hintergrund.
-  - Kommunikation über Unix Domain Socket (`~/.cache/chaipi/chaipi.sock`).
-  - Reduziert die Ausführungszeit von ~1.5 Sekunden (Chrome-Kaltstart) auf **unter 200 ms** für hochfrequente Shell-Pipes und Skripte.
+- [x] **Daemon / Background Worker Mode (`--daemon` / `chaipi daemon`):**
+  - Persistente, warme Chrome-Instanz im Hintergrund mit automatischer Lebenszyklusverwaltung (`start`, `stop`, `status`, `run`).
+  - Ultra-schnelle IPC-Kommunikation über Unix Domain Socket (`~/.cache/chaipi/chaipi.sock`).
+  - Paralleler Request-Queueing-Mechanismus zur Vermeidung von Konflikten bei gleichzeitigen Shell-Aufrufen.
+  - Bereinigung verwaister `SingletonLock`-Symlinks zur robusten Wiederherstellung nach Abstürzen oder Signalabbrüchen.
+  - Reduziert die Ausführungszeit von ~1.5 Sekunden (Chrome-Kaltstart) auf **unter 300 ms** für hochfrequente Shell-Pipes und Skripte.
+  - Nahtloser Fallback auf Standalone-Ausführung bei inaktivem Daemon oder mit `--no-daemon`.
 
 ### Priorität 3: Paketierung & Distribution
 - [x] **Arch Linux / CachyOS PKGBUILD:**

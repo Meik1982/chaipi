@@ -80,10 +80,35 @@ cat data.txt | chaipi --json "Extrahiere Metriken"
 
 ---
 
+## 🚀 Daemon-Modus (Sub-200ms Latenz)
+
+Normalerweise startet `chaipi` für jede Ausführung einen schlanken Headless-Chrome-Prozess (~1,4 s Kaltstart). Für hochfrequente Shell-Pipes, Skripte oder interaktive Nutzung kann ein **warmer Hintergrund-Daemon** gestartet werden:
+
+```bash
+# Daemon im Hintergrund starten (hält Chrome warm bereit):
+chaipi daemon start
+
+# Status abfragen (PID, Uptime, Modellverfügbarkeit):
+chaipi daemon status
+
+# Beliebige Befehle und Pipes ausführen (reagieren nun in < 200-300 ms!):
+chaipi "Sag hallo"
+cat /var/log/syslog | chaipi "Finde kritische Fehler"
+
+# Daemon beenden:
+chaipi daemon stop
+```
+
+*Hinweis:* Wenn der Daemon läuft, verbindet sich `chaipi` automatisch transparent über den Unix Domain Socket `~/.cache/chaipi/chaipi.sock`. Läuft der Daemon nicht, greift ohne Unterbrechung der Standalone-Modus. Mit `--no-daemon` kann die Standalone-Ausführung jederzeit erzwungen werden.
+
+---
+
 ## ⚙️ Optionen & Flags
 
-| Flag | Beschreibung |
+| Flag / Befehl | Beschreibung |
 | :--- | :--- |
+| `daemon <start\|stop\|status>` | Steuert den persistenten Hintergrund-Daemon mit warmer Chrome-Instanz. |
+| `--no-daemon` | Erzwingt Standalone-Ausführung ohne Verbindung zum Hintergrund-Daemon. |
 | `--check` | Führt einen schnellen System- & Modell-Check via CDP durch (ohne Prompt). |
 | `--stream` | Gibt Tokens in Echtzeit direkt auf `stdout` aus (Streaming). |
 | `-s, --system <text>` | Definiert einen System-Prompt für die Modell-Session. |

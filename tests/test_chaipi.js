@@ -121,4 +121,49 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         assert.equal(res.status, 0, 'Prompt mit System-Prompt muss erfolgreich sein');
         assert.match(res.stdout.toLowerCase(), /morning/, 'Muss englische Übersetzung enthalten');
     });
+
+    await t.test('11. Daemon-Lifecycle: Start, Status, Ausführung und Stop', async (dt) => {
+        // Vorab sicherstellen, dass kein alter Daemon läuft
+        spawnSync(CHAIPI_BIN, ['daemon', 'stop'], { encoding: 'utf8', timeout: 5000 });
+
+        // Status vor Start: Läuft nicht
+        const statusBefore = spawnSync(CHAIPI_BIN, ['daemon', 'status', '--json'], { encoding: 'utf8', timeout: 5000 });
+        assert.equal(statusBefore.status, 0);
+        const parsedBefore = JSON.parse(statusBefore.stdout.trim());
+        assert.equal(parsedBefore.data.running, false);
+
+        // Daemon starten
+        const startRes = spawnSync(CHAIPI_BIN, ['daemon', 'start'], { encoding: 'utf8', timeout: 25000 });
+        assert.equal(startRes.status, 0, 'Daemon-Start muss erfolgreich sein');
+        assert.ok(startRes.stdout.includes('erfolgreich im Hintergrund gestartet'));
+
+        // Status nach Start: Läuft aktiv
+        const statusAfter = spawnSync(CHAIPI_BIN, ['daemon', 'status', '--json'], { encoding: 'utf8', timeout: 5000 });
+        assert.equal(statusAfter.status, 0);
+        const parsedAfter = JSON.parse(statusAfter.stdout.trim());
+        assert.equal(parsedAfter.data.running, true);
+        assert.ok(parsedAfter.data.pid > 0);
+        assert.equal(parsedAfter.data.availability, 'available');
+
+        // Prompt über warmen Daemon ausführen (Inferenz-Test)
+        const promptRes = spawnSync(CHAIPI_BIN, ['Zähle von 1 bis 2'], { encoding: 'utf8', timeout: 20000 });
+        assert.equal(promptRes.status, 0, 'Prompt über Daemon muss erfolgreich sein');
+        assert.match(promptRes.stdout, /[12]/);
+
+        // Streaming über warmen Daemon ausführen
+        const streamRes = spawnSync(CHAIPI_BIN, ['--stream', 'Sag Hallo'], { encoding: 'utf8', timeout: 20000 });
+        assert.equal(streamRes.status, 0, 'Streaming über Daemon muss erfolgreich sein');
+        assert.ok(streamRes.stdout.length > 0);
+
+        // Daemon beenden
+        const stopRes = spawnSync(CHAIPI_BIN, ['daemon', 'stop'], { encoding: 'utf8', timeout: 10000 });
+        assert.equal(stopRes.status, 0, 'Daemon-Stop muss erfolgreich sein');
+        assert.ok(stopRes.stdout.includes('beendet'));
+
+        // Endstatus prüfen: Läuft nicht mehr
+        const statusFinal = spawnSync(CHAIPI_BIN, ['daemon', 'status', '--json'], { encoding: 'utf8', timeout: 5000 });
+        assert.equal(statusFinal.status, 0);
+        const parsedFinal = JSON.parse(statusFinal.stdout.trim());
+        assert.equal(parsedFinal.data.running, false);
+    });
 });

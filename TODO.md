@@ -76,10 +76,21 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
 ### Priorität 3: Paketierung & Distribution
 - [x] **Arch Linux / CachyOS PKGBUILD:**
   - Saubere Integration in die lokale Paketverwaltung (`pacman`/`makepkg`) zur Vermeidung von unversionierten globalen Symlinks.
-  - Bereitstellung in `dist/archlinux/PKGBUILD`.
-- [ ] **NPM Global Package Readiness:**
-  - Validierung von `npm pack` und Bereinigung von `.npmignore` (nur `bin/`, `README.md`, `LICENSE`, `package.json`).
+  - Bereitstellung in `dist/archlinux/PKGBUILD` inklusive modularer `lib/`-Struktur.
+- [x] **NPM Global Package Readiness:**
+  - Saubere Whitelist via `"files"` in `package.json` (`bin/`, `lib/`, `README.md`, `LICENSE`).
+  - Tarball-Größe bei nur 16.5 kB mit 0 externen Abhängigkeiten.
+  - Verifiziert via `npm pack --dry-run`.
 
-### Priorität 4: WebGPU Engine-Erweiterung
+### Priorität 4: Architektur-Refactoring & Härtung
+- [x] **Zero-Dependency Modularisierung:**
+  - Aufteilung des 1.350-Zeilen-Monolithen in dedizierte Module: `lib/constants.js`, `lib/security.js`, `lib/chrome.js`, `lib/cdp.js`, `lib/bridge.js`, `lib/daemon.js`, `lib/client.js`.
+  - Schlanker CLI-Orchestrator in `bin/chaipi.mjs` (~220 Zeilen).
+  - Schnelle Unit-Tests in `tests/test_units.js` (Laufzeit < 10 ms).
+- [x] **Auto-Idle-Timeout für Hintergrund-Daemon:**
+  - Automatisches Beenden des Daemons nach 15 Minuten Inaktivität (`DEFAULT_IDLE_TIMEOUT_MS`), um System-RAM zu schonen.
+  - Timer-Reset bei jedem eingehenden Pipe-Request.
+
+### Priorität 5: WebGPU Engine-Erweiterung
 - [ ] **WebGPU Fallback Engine:**
   - Integration einer leichtgewichtigen OnnxRuntime-Web- oder Transformers.js-Laufzeit auf der existierenden WebGPU-Runtime-Seite für Systeme ohne Gemini Nano Support.

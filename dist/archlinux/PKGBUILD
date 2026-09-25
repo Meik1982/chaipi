@@ -24,11 +24,18 @@ package() {
         cd "$startdir/../.."
     fi
 
-    # CLI-Binary installieren
-    install -Dm755 bin/chaipi.mjs "$pkgdir/usr/bin/chaipi"
+    # Anwendungsdateien installieren
+    install -d "$pkgdir/usr/lib/$pkgname"
+    install -d "$pkgdir/usr/lib/$pkgname/bin"
+    install -Dm755 bin/chaipi.mjs "$pkgdir/usr/lib/$pkgname/bin/chaipi.mjs"
+    cp -r lib "$pkgdir/usr/lib/$pkgname/"
+    install -Dm644 package.json "$pkgdir/usr/lib/$pkgname/package.json"
+
+    # Symlink in /usr/bin anlegen
+    install -d "$pkgdir/usr/bin"
+    ln -s "/usr/lib/$pkgname/bin/chaipi.mjs" "$pkgdir/usr/bin/chaipi"
 
     # Dokumentation & Metadaten installieren
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
     install -Dm644 TODO.md "$pkgdir/usr/share/doc/$pkgname/TODO.md"
-    install -Dm644 package.json "$pkgdir/usr/share/$pkgname/package.json"
 }

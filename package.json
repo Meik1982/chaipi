@@ -6,10 +6,17 @@
   "bin": {
     "chaipi": "./bin/chaipi.mjs"
   },
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "scripts": {
-    "test": "node --test tests/test_chaipi.js",
-    "lint": "node --check bin/chaipi.mjs"
+    "test": "node --test tests/test_units.js tests/test_chaipi.js",
+    "test:unit": "node --test tests/test_units.js",
+    "lint": "node --check bin/chaipi.mjs lib/*.js tests/*.js"
   },
   "keywords": [
     "chrome-ai",

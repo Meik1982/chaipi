@@ -15,6 +15,7 @@ import { handleDaemonCommand } from '../lib/daemon.js';
 import { tryExecuteViaDaemon, runStandalone } from '../lib/client.js';
 import { recordUsage, computeStatsMetrics, formatStatsLine } from '../lib/stats.js';
 import { startHttpServer } from '../lib/server.js';
+import { runMapReduce } from '../lib/chunker.js';
 
 function printHelp() {
     console.log(`ChAIPi (Chrome AI Pipe) v${VERSION}
@@ -32,6 +33,8 @@ Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
   --stream              Gibt Tokens in Echtzeit direkt auf stdout aus (Streaming)
   --stats               Gibt Token- und Performance-Metriken auf stderr aus
+  --chunk, --map-reduce Automatisches Chunking & Map-Reduce für lange Dokumente (>9k Tokens)
+  --no-chunk            Deaktiviert Chunking (erzwingt Einzelanfrage)
   -s, --system <text>   Definiert einen System-Prompt für die Modell-Session
   -t, --temperature <n> Steuert die Modell-Kreativität (z. B. 0.2 für Extraktion, 0.8 für Text)
   --top-k <n>           Begrenzt den Sampling-Pool des Modells
@@ -97,6 +100,8 @@ let isCheckOnly = false;
 let isStreamOutput = false;
 let isJsonOutput = false;
 let isStatsOutput = false;
+let enableChunking = false;
+let disableChunking = false;
 let isStatsSubcommand = false;
 let isServeSubcommand = false;
 let isHttpFlag = false;
@@ -138,6 +143,10 @@ for (let i = 0; i < rawArgs.length; i++) {
         serveHost = rawArgs[++i];
     } else if (arg === '--stats') {
         isStatsOutput = true;
+    } else if (arg === '--chunk' || arg === '--map-reduce') {
+        enableChunking = true;
+    } else if (arg === '--no-chunk') {
+        disableChunking = true;
     } else if (arg === '--no-daemon') {
         noDaemon = true;
     } else if (arg === '--check') {
@@ -263,6 +272,88 @@ async function main() {
 
     // 2. Transparenter IPC-Aufruf an Daemon versuchen (falls aktiv und nicht deaktiviert)
     const canUseDaemon = !noDaemon && !isTempProfile && !customProfileDir && !customTargetUrl && existsSync(SOCKET_PATH);
+
+    // 2a. Smart-Chunking & Map-Reduce bei langen Pipe-Eingaben
+    const shouldChunk = Boolean(!isCheckOnly && stdinData && !disableChunking && (enableChunking || stdinData.length > 14000));
+    if (shouldChunk) {
+        verboseLog(`Eingabetext umfasst ${stdinData.length} Zeichen. Aktiviere Smart-Chunking & Map-Reduce Pipeline...`);
+        const executeChunkPrompt = async (pText) => {
+            if (canUseDaemon) {
+                try {
+                    const req = {
+                        action: 'prompt',
+                        prompt: pText,
+                        systemPrompt: customSystemPrompt,
+                        temperature: customTemperature,
+                        topK: customTopK,
+                        stream: false
+                    };
+                    const res = await tryExecuteViaDaemon(req, { isStreamOutput: false, verboseLog });
+                    if (res && res.success) return res;
+                } catch (e) {
+                    verboseLog(`Daemon-Fehler bei Chunk-Ausführung (${e.message}). Wechsle auf Standalone...`);
+                }
+            }
+            return await runStandalone({
+                isCheckOnly: false,
+                isStreamOutput: false,
+                isJsonOutput: false,
+                isStatsOutput: false,
+                isVerbose: false,
+                customProfileDir,
+                isTempProfile,
+                customTargetUrl,
+                customSystemPrompt,
+                customTemperature,
+                customTopK,
+                finalPrompt: pText,
+                verboseLog: () => {},
+                verboseProgress: () => {}
+            });
+        };
+
+        try {
+            const chunkRes = await runMapReduce({
+                text: stdinData,
+                instruction: instruction || 'Fasse die folgenden Eingabedaten zusammen und hebe die wichtigsten Kernpunkte hervor',
+                executeFn: executeChunkPrompt,
+                onProgress: (status) => {
+                    if (isVerbose || isStatsOutput) {
+                        process.stderr.write(`[chaipi chunker] ${status}\n`);
+                    }
+                },
+                verboseLog
+            });
+
+            if (chunkRes.usage) {
+                recordUsage(chunkRes.usage);
+            }
+
+            if (isJsonOutput) {
+                let parsedData = null;
+                try { parsedData = JSON.parse(chunkRes.text); } catch (e) {}
+                const jsonResp = {
+                    success: true,
+                    data: parsedData !== null ? parsedData : chunkRes.text,
+                    chunks: chunkRes.chunksCount
+                };
+                if (chunkRes.usage) {
+                    jsonResp.usage = chunkRes.usage;
+                }
+                console.log(JSON.stringify(jsonResp, null, 2));
+            } else {
+                process.stdout.write(chunkRes.text + '\n');
+            }
+
+            if (isStatsOutput && chunkRes.usage) {
+                process.stderr.write(formatStatsLine(chunkRes.usage) + '\n');
+            }
+            process.exit(0);
+        } catch (err) {
+            console.error(`[chaipi Chunking Fehler] ${err.message}`);
+            process.exit(1);
+        }
+    }
 
     if (canUseDaemon) {
         try {

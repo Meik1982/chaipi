@@ -10,6 +10,7 @@ import { findChromeExecutable, cleanStaleSingletonLock } from '../lib/chrome.js'
 import { ensureRuntimeHtml } from '../lib/bridge.js';
 import { recordUsage, loadStats, computeStatsMetrics, formatStatsLine } from '../lib/stats.js';
 import { formatOpenAiMessages, startHttpServer } from '../lib/server.js';
+import { splitTextIntoChunks, runMapReduce } from '../lib/chunker.js';
 
 test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
     await t.test('1. Constants: Version & Pfade sind definiert', () => {
@@ -245,5 +246,53 @@ test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
         } finally {
             await serverInfo.close();
         }
+    });
+
+    await t.test('11. Chunker: splitTextIntoChunks teilt Texte entlang natürlicher Zeilengrenzen', () => {
+        // 1. Kurzer Text bleibt ein einzelner Chunk
+        const shortText = 'Zeile 1\nZeile 2\nZeile 3';
+        const singleChunks = splitTextIntoChunks(shortText, 50);
+        assert.equal(singleChunks.length, 1);
+        assert.equal(singleChunks[0], shortText);
+
+        // 2. Langer Text wird an Zeilengrenzen aufgeteilt
+        const lines = [];
+        for (let i = 1; i <= 20; i++) {
+            lines.push(`Dies ist Logzeile Nummer ${i} mit zusätzlichen Daten.`);
+        }
+        const longText = lines.join('\n');
+        const chunks = splitTextIntoChunks(longText, 200, 30);
+        assert.ok(chunks.length >= 3, `Erwartet mindestens 3 Chunks, erhalten: ${chunks.length}`);
+        for (const chunk of chunks) {
+            assert.ok(chunk.length <= 250, 'Chunk überschreitet Längenlimit');
+            assert.ok(!chunk.startsWith('\n') && !chunk.endsWith('\n'), 'Chunk ist getrimmt');
+        }
+    });
+
+    await t.test('12. Chunker: runMapReduce sequenzielle Aggregation und Usage-Metriken', async () => {
+        const calls = [];
+        const mockExecuteFn = async (prompt) => {
+            calls.push(prompt);
+            return {
+                success: true,
+                text: `Ergebnis für ${prompt.slice(0, 30)}...`,
+                usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70, durationMs: 100 }
+            };
+        };
+
+        const longText = Array.from({ length: 15 }, (_, i) => `Abschnitt ${i + 1}: Fehler in Modul ${i + 1}\n`).join('');
+        const res = await runMapReduce({
+            text: longText,
+            instruction: 'Finde Fehler',
+            executeFn: mockExecuteFn,
+            maxChars: 100 // Erzwinge mehrere Chunks
+        });
+
+        assert.equal(res.success, true);
+        assert.ok(res.chunksCount > 1, 'Muss mehrere Chunks erzeugt haben');
+        // Map Calls = chunksCount, Reduce Call = 1 => Total Calls = chunksCount + 1
+        assert.equal(calls.length, res.chunksCount + 1);
+        assert.ok(res.usage.totalTokens > 140, 'Usage Tokens müssen aggregiert sein');
+        assert.ok(res.usage.tokPerSec > 0, 'Tokens/Sekunde muss berechnet sein');
     });
 });

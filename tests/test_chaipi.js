@@ -303,4 +303,23 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
             serverProc.kill('SIGTERM');
         }
     });
+
+    await t.test('14. Smart-Chunking & Map-Reduce CLI Pipeline (--chunk)', async () => {
+        const testInput = Array.from({ length: 40 }, (_, i) => `Log-Eintrag [${i + 1}]: System-Status OK und Task ${i + 1} abgeschlossen.`).join('\n');
+        const res = spawnSync('node', [CHAIPI_BIN, '--chunk', '--json', 'Fasse zusammen'], {
+            input: testInput,
+            encoding: 'utf8',
+            env: process.env,
+            timeout: 60000
+        });
+
+        assert.equal(res.status, 0, `Exit-Code muss 0 sein: ${res.stderr}`);
+        const parsed = JSON.parse(res.stdout);
+        assert.equal(parsed.success, true);
+        assert.ok(typeof parsed.data === 'string' && parsed.data.length > 0);
+        assert.ok(parsed.chunks >= 1);
+        if (parsed.usage) {
+            assert.ok(parsed.usage.totalTokens > 0);
+        }
+    });
 });

@@ -108,7 +108,10 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
 - [x] **Warm-Session-Pooling (TTFT-Latenzoptimierung):**
   - Vorab-Erzeugung sauberer Standard-Sessions (`window.__chaipi_warm_session`) im Hintergrund.
   - Reduziert Time-to-First-Token um ~150–250ms bei wiederholten Anfragen.
-- [ ] **Smart-Chunking & Map-Reduce (> 9.216 Tokens):**
-  - Automatisches Sliding-Window-Chunking / Map-Reduce für übergroße Logfiles.
+- [x] **Smart-Chunking & Map-Reduce (> 9.216 Tokens):**
+  - Intelligentes Chunking entlang natürlicher Zeilenumbrüche und Satzgrenzen (`lib/chunker.js`).
+  - Sequenzielle Map-Phase über den Daemon mit anschließender Reduce-Synthese.
+  - Automatisches Auslösen bei Pipe-Eingaben > 14.000 Zeichen oder via `--chunk` / `--map-reduce`.
+  - Vollständige Aggregation aller Token-Metriken in `stats.json`.
 - [ ] **WebGPU Fallback Engine (nachgestellt):**
   - Integration einer leichtgewichtigen OnnxRuntime-Web- oder Transformers.js-Laufzeit auf der existierenden WebGPU-Runtime-Seite für Systeme ohne Gemini Nano Support.

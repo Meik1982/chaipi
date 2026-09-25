@@ -254,6 +254,10 @@ async function main() {
     const instruction = promptArgs.join(' ').trim();
 
     if (!isCheckOnly && !instruction && !stdinData) {
+        if (isStatsOutput) {
+            showStatsDashboard(isJsonOutput);
+            process.exit(0);
+        }
         console.log('Verwendung: chaipi [Optionen] "<Prompt>" oder "cat datei | chaipi <Anweisung>"');
         console.log('Hilfe: chaipi --help');
         console.error('[chaipi Fehler] Kein Prompt und keine Pipe-Eingabe angegeben.');

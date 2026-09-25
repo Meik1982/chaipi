@@ -113,5 +113,9 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Sequenzielle Map-Phase über den Daemon mit anschließender Reduce-Synthese.
   - Automatisches Auslösen bei Pipe-Eingaben > 14.000 Zeichen oder via `--chunk` / `--map-reduce`.
   - Vollständige Aggregation aller Token-Metriken in `stats.json`.
+- [x] **LiteLLM Fallback & Quota Routing:**
+  - Router-Fallback `gemini-3.8-flash -> chaipi` in `~/.hermes/litellm_config.yaml` konfiguriert.
+  - Fängt 429-Fehler und TPM-Spitzen automatisch ab und leitet Anfragen auf den lokalen ChAIPi-Server um.
+  - `chaipi` und `gemini-nano` im Hermes-Provider `litellm-proxy` registriert.
 - [ ] **WebGPU Fallback Engine (nachgestellt):**
   - Integration einer leichtgewichtigen OnnxRuntime-Web- oder Transformers.js-Laufzeit auf der existierenden WebGPU-Runtime-Seite für Systeme ohne Gemini Nano Support.

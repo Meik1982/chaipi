@@ -47,7 +47,7 @@ console.log('✅ Alle Tests erfolgreich bestanden.\n');
 console.log(`📦 Schritt 2: Synchronisiere stabilen Stand nach ${PROD_DIR}...`);
 mkdirSync(PROD_DIR, { recursive: true });
 
-const filesToDeploy = ['bin', 'lib', 'package.json', 'README.md', 'LICENSE'];
+const filesToDeploy = ['bin', 'lib', 'completions', 'package.json', 'README.md', 'LICENSE'];
 for (const item of filesToDeploy) {
     const src = join(ROOT_DIR, item);
     const dest = join(PROD_DIR, item);

@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, unlinkSync, symlinkSync, mkdtempSync, rmSync, lstatSync } from 'node:fs';
+import { existsSync, unlinkSync, symlinkSync, mkdtempSync, rmSync, lstatSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 import { VERSION, SOCKET_PATH, PID_PATH } from '../lib/constants.js';
 import { sanitizePipeInput, buildSecurePipePrompt } from '../lib/security.js';
@@ -294,5 +298,20 @@ test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
         assert.equal(calls.length, res.chunksCount + 1);
         assert.ok(res.usage.totalTokens > 140, 'Usage Tokens müssen aggregiert sein');
         assert.ok(res.usage.tokPerSec > 0, 'Tokens/Sekunde muss berechnet sein');
+    });
+
+    await t.test('13. Completions: Bash, Zsh und Fish Skripte sind vollständig und syntaktisch valide', () => {
+        const bashComp = readFileSync(join(__dirname, '..', 'completions', 'bash', 'chaipi'), 'utf8');
+        assert.ok(bashComp.includes('_chaipi_completions'), 'Bash Completion muss Funktion enthalten');
+        assert.ok(bashComp.includes('complete -F _chaipi_completions chaipi'), 'Muss chaipi registrieren');
+        assert.ok(bashComp.includes('complete -F _chaipi_completions local-browser-ai'), 'Muss Alias registrieren');
+
+        const zshComp = readFileSync(join(__dirname, '..', 'completions', 'zsh', '_chaipi'), 'utf8');
+        assert.ok(zshComp.includes('#compdef chaipi local-browser-ai'), 'Zsh Completion muss #compdef enthalten');
+        assert.ok(zshComp.includes('_arguments'), 'Zsh Completion muss _arguments nutzen');
+
+        const fishComp = readFileSync(join(__dirname, '..', 'completions', 'fish', 'chaipi.fish'), 'utf8');
+        assert.ok(fishComp.includes('complete -c $cmd'), 'Fish Completion muss $cmd Loops nutzen');
+        assert.ok(fishComp.includes('daemon'), 'Fish Completion muss Subbefehle enthalten');
     });
 });

@@ -52,4 +52,14 @@ package() {
     # Dokumentation und Lizenz installieren
     install -Dm644 README.md "${pkgdir}/usr/share/doc/${_pkgname}/README.md"
     install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE"
+
+    # Shell-Autovervollständigung installieren
+    install -Dm644 completions/bash/chaipi "${pkgdir}/usr/share/bash-completion/completions/chaipi"
+    ln -s chaipi "${pkgdir}/usr/share/bash-completion/completions/local-browser-ai"
+
+    install -Dm644 completions/zsh/_chaipi "${pkgdir}/usr/share/zsh/site-functions/_chaipi"
+    ln -s _chaipi "${pkgdir}/usr/share/zsh/site-functions/_local-browser-ai"
+
+    install -Dm644 completions/fish/chaipi.fish "${pkgdir}/usr/share/fish/vendor_completions.d/chaipi.fish"
+    ln -s chaipi.fish "${pkgdir}/usr/share/fish/vendor_completions.d/local-browser-ai.fish"
 }

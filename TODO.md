@@ -129,3 +129,7 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Bereitstellung von systemd-User-Service (`/usr/lib/systemd/user/chaipi.service`) und Binaries (`/usr/bin/chaipi`).
   - Automatisierte Validierung in `check()` (`npm run test:unit`) vor Paketerstellung.
   - `.SRCINFO` gepflegt für AUR / Pacman-Metadaten.
+- [x] **Shell-Autovervollständigung (Bash, Zsh, Fish):**
+  - Vollständige Autovervollständigung für Subbefehle (`daemon`, `stats`, `serve`, `completion`) und Optionen (`--chunk`, `--stats`, etc.).
+  - Dynamischer Generator-Befehl: `chaipi completion <bash|zsh|fish>`.
+  - Bereitstellung in `completions/{bash,zsh,fish}` und automatische Systeminstallation im `PKGBUILD`.

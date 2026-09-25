@@ -1,0 +1,71 @@
+#compdef chaipi local-browser-ai
+
+_chaipi() {
+    local -a subcommands
+    subcommands=(
+        'daemon:Steuert den Hintergrund-Worker mit warmer Chrome-Instanz'
+        'stats:Zeigt Quota-Einsparungen und Token-Raten (RPM/TPM/RPD)'
+        'serve:Startet OpenAI-kompatiblen HTTP-Server'
+        'completion:Generiert Shell-Autovervollständigung (bash, zsh, fish)'
+    )
+
+    local -a daemon_commands
+    daemon_commands=(
+        'start:Startet den Hintergrund-Daemon'
+        'stop:Beendet den Hintergrund-Daemon'
+        'status:Zeigt den Status des Hintergrund-Daemons'
+        'restart:Startet den Hintergrund-Daemon neu'
+        'run:Startet den Daemon im Vordergrund (Debugging)'
+    )
+
+    local -a common_options
+    common_options=(
+        '--check[Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab]'
+        '--stream[Gibt Tokens in Echtzeit direkt auf stdout aus]'
+        '--stats[Gibt Token- und Performance-Metriken auf stderr aus]'
+        '(--chunk --map-reduce)'{--chunk,--map-reduce}'[Automatisches Chunking & Map-Reduce für lange Dokumente]'
+        '--no-chunk[Deaktiviert Chunking (erzwingt Einzelanfrage)]'
+        '(-s --system)'{-s,--system}'[Definiert einen System-Prompt]:system prompt:'
+        '(-t --temperature)'{-t,--temperature}'[Steuert Modell-Kreativität (0.0 - 1.0)]:temperature:'
+        '--top-k[Begrenzt den Sampling-Pool]:top_k:'
+        '--no-daemon[Erzwingt Standalone-Ausführung ohne Daemon]'
+        '--profile[Verwendet ein bestimmtes Profilverzeichnis]:profile dir:_files -/'
+        '--temp-profile[Erzwingt ein isoliertes temporäres Profil]'
+        '--url[Kontext-URL im Headless-Tab]:url:'
+        '--json[Gibt Ausgabe als strukturiertes JSON zurück]'
+        '(-V --verbose)'{-V,--verbose}'[Ausführliche Diagnose- und Statusausgabe auf stderr]'
+        '(-v --version)'{-v,--version}'[Zeigt die Versionsnummer an]'
+        '(-h --help)'{-h,--help}'[Zeigt den Hilfetext an]'
+    )
+
+    _arguments -C \
+        '1: :->command' \
+        '*: :->args' && return 0
+
+    case "$state" in
+        command)
+            _describe -t subcommands 'Subbefehl' subcommands
+            _values 'Optionen' $common_options
+            ;;
+        args)
+            case "$words[2]" in
+                daemon)
+                    _describe -t daemon_commands 'Daemon-Befehl' daemon_commands
+                    ;;
+                completion)
+                    _values 'Shell' bash zsh fish
+                    ;;
+                serve)
+                    _arguments \
+                        '--port[Port für HTTP-Server]:port:' \
+                        '--host[Host für HTTP-Server]:host:'
+                    ;;
+                *)
+                    _values 'Optionen' $common_options
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_chaipi "$@"

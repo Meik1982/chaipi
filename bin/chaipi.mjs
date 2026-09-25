@@ -7,8 +7,9 @@
  * Lizenz: MIT © 2026 Meik
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { VERSION, SOCKET_PATH } from '../lib/constants.js';
 import { sanitizePipeInput, buildSecurePipePrompt } from '../lib/security.js';
 import { handleDaemonCommand } from '../lib/daemon.js';
@@ -28,6 +29,7 @@ Verwendung:
   chaipi daemon <start|stop|status|run>
   chaipi stats
   chaipi serve [--port <port>] [--host <host>]
+  chaipi completion <bash|zsh|fish>
 
 Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
@@ -54,6 +56,7 @@ Daemon, Server & Monitoring:
   chaipi daemon run     Führt den Daemon im Vordergrund aus (Debugging)
   chaipi stats          Zeigt Quota-Einsparungen und Token-Raten (RPM/TPM/RPD)
   chaipi serve          Startet OpenAI-kompatiblen HTTP-Server (Standard: Port 8380)
+  chaipi completion     Gibt Autovervollständigungs-Skripte für Shells aus
 
 Beispiele:
   chaipi --check
@@ -62,7 +65,47 @@ Beispiele:
   chaipi --stats "Schreibe eine kurze Geschichte über Unix-Pipes"
   chaipi -s "Antworte ausschließlich als JSON" "Extrahiere Keys aus Logzeile"
   cat /var/log/syslog | chaipi -t 0.2 "Finde die 3 kritischsten Fehlermeldungen"
+  source <(chaipi completion bash)
 `);
+}
+
+function handleCompletionCommand(shell) {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const completionDir = join(__dirname, '..', 'completions');
+
+    if (shell === 'bash') {
+        const filePath = join(completionDir, 'bash', 'chaipi');
+        if (existsSync(filePath)) {
+            process.stdout.write(readFileSync(filePath, 'utf8'));
+            return;
+        }
+    } else if (shell === 'zsh') {
+        const filePath = join(completionDir, 'zsh', '_chaipi');
+        if (existsSync(filePath)) {
+            process.stdout.write(readFileSync(filePath, 'utf8'));
+            return;
+        }
+    } else if (shell === 'fish') {
+        const filePath = join(completionDir, 'fish', 'chaipi.fish');
+        if (existsSync(filePath)) {
+            process.stdout.write(readFileSync(filePath, 'utf8'));
+            return;
+        }
+    }
+
+    console.error(`Verwendung: chaipi completion <bash|zsh|fish>
+
+Beispiele zur Aktivierung:
+  # Bash (in ~/.bashrc):
+  source <(chaipi completion bash)
+
+  # Zsh (in ~/.zshrc):
+  source <(chaipi completion zsh)
+
+  # Fish:
+  chaipi completion fish > ~/.config/fish/completions/chaipi.fish
+`);
+    process.exit(shell ? 1 : 0);
 }
 
 function showStatsDashboard(isJson) {
@@ -133,6 +176,10 @@ for (let i = 0; i < rawArgs.length; i++) {
         daemonSubcommand = 'worker';
     } else if (arg === 'stats') {
         isStatsSubcommand = true;
+    } else if (arg === 'completion') {
+        const shell = rawArgs[i + 1];
+        handleCompletionCommand(shell);
+        process.exit(0);
     } else if (arg === 'serve') {
         isServeSubcommand = true;
     } else if (arg === '--http') {

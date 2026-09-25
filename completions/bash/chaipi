@@ -1,0 +1,51 @@
+# Bash completion for chaipi and local-browser-ai
+
+_chaipi_completions() {
+    local cur prev words cword
+    _init_completion 2>/dev/null || return
+
+    local subcommands="daemon stats serve completion"
+    local daemon_cmds="start stop status restart run"
+    local completion_shells="bash zsh fish"
+    local options="--check --stream --stats --chunk --map-reduce --no-chunk -s --system -t --temperature --top-k --no-daemon --profile --temp-profile --url --json -V --verbose -v --version -h --help --http --port -p --host"
+
+    case "$prev" in
+        daemon)
+            COMPREPLY=($(compgen -W "$daemon_cmds" -- "$cur"))
+            return 0
+            ;;
+        completion)
+            COMPREPLY=($(compgen -W "$completion_shells" -- "$cur"))
+            return 0
+            ;;
+        --profile)
+            _filedir -d 2>/dev/null
+            return 0
+            ;;
+        -s|--system|-t|--temperature|--top-k|--url|--port|-p|--host)
+            return 0
+            ;;
+    esac
+
+    local has_subcmd=0
+    for w in "${words[@]:1:$cword-1}"; do
+        case "$w" in
+            daemon|stats|serve|completion)
+                has_subcmd=1
+                break
+                ;;
+        esac
+    done
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$options" -- "$cur"))
+        return 0
+    fi
+
+    if [[ $has_subcmd -eq 0 ]]; then
+        COMPREPLY=($(compgen -W "$subcommands $options" -- "$cur"))
+    fi
+}
+
+complete -F _chaipi_completions chaipi
+complete -F _chaipi_completions local-browser-ai

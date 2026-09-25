@@ -122,13 +122,47 @@ chaipi stats --json
 
 ---
 
+## 🌐 OpenAI-kompatibler HTTP-Server (`chaipi serve`)
+
+ChAIPi kann als lokaler OpenAI-kompatibler HTTP-Server betrieben werden (`http://127.0.0.1:8380/v1`):
+
+```bash
+# Eigenständigen HTTP-Server starten:
+chaipi serve --port 8380
+
+# Oder Daemon direkt mit HTTP-Schnittstelle betreiben:
+chaipi daemon start --http
+```
+
+### Anbindung an LiteLLM Proxy / Lokale Tools
+In `~/.hermes/litellm_config.yaml`:
+```yaml
+model_list:
+  - model_name: chaipi
+    litellm_params:
+      model: openai/gemini-nano
+      api_base: http://127.0.0.1:8380/v1
+      api_key: "none"
+```
+
+### Endpunkte
+- `GET /health` & `GET /`: Status, Backend-Info und aktive Socket-Pfade.
+- `GET /v1/models`: Listet `gemini-nano` und `chaipi`.
+- `POST /v1/chat/completions`: Vollwertige OpenAI Chat-Schnittstelle (Non-Streaming & SSE Streaming).
+- `POST /v1/completions`: Legacy Completions Schnittstelle.
+- `GET /v1/stats`: Maschinenlesbare JSON-Quota- und Durchsatzstatistiken.
+
+---
+
 ## ⚙️ Optionen & Flags
 
 | Flag / Befehl | Beschreibung |
 | :--- | :--- |
 | `daemon <start\|stop\|status>` | Steuert den persistenten Hintergrund-Daemon mit warmer Chrome-Instanz. |
+| `serve [--port <n>]` | Startet den OpenAI-kompatiblen HTTP-Server (Standard: Port 8380). |
 | `stats` | Zeigt das Token-Accounting-Dashboard (RPD, RPM, TPM, Quota-Einsparung). |
 | `--stats` | Gibt Token-Verbrauch, Kontext-Auslastung und Generierungs-Speed auf `stderr` aus. |
+| `--http` | Aktiviert die HTTP-Schnittstelle zusätzlich zum Unix-Socket im Daemon. |
 | `--no-daemon` | Erzwingt Standalone-Ausführung ohne Verbindung zum Hintergrund-Daemon. |
 | `--check` | Führt einen schnellen System- & Modell-Check via CDP durch (ohne Prompt). |
 | `--stream` | Gibt Tokens in Echtzeit direkt auf `stdout` aus (Streaming). |

@@ -95,7 +95,14 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Überwachung des 9.216-Token Context-Windows und Warnung/Monitoring.
   - Gleitendes 60s-Fenster für RPM/TPM sowie tägliches Tracking (RPD, Tokens Saved).
   - Persistierung in `~/.cache/chaipi/stats.json` und maschinenlesbare JSON-Ausgabe.
+- [x] **OpenAI-kompatibler HTTP-Server (`chaipi serve` & `--http`):**
+  - Zero-Dependency HTTP-Server auf Basis von `node:http`.
+  - Endpunkte `/v1/models`, `/v1/chat/completions` (Non-Streaming & SSE Streaming), `/v1/completions`, `/v1/stats`, `/health`.
+  - Direkte Integration in LiteLLM Proxy und lokale Agenten-Tools.
+  - Unterstützung im Daemon-Modus (`chaipi daemon start --http`, `chaipi.service`).
 
-### Priorität 5: WebGPU Engine-Erweiterung
-- [ ] **WebGPU Fallback Engine:**
+### Priorität 5: Kontext-Erweiterung & WebGPU-Engine
+- [ ] **Context Guard & Smart-Chunking (> 9.216 Tokens):**
+  - Automatisches Sliding-Window-Chunking / Map-Reduce für übergroße Logfiles.
+- [ ] **WebGPU Fallback Engine (nachgestellt):**
   - Integration einer leichtgewichtigen OnnxRuntime-Web- oder Transformers.js-Laufzeit auf der existierenden WebGPU-Runtime-Seite für Systeme ohne Gemini Nano Support.

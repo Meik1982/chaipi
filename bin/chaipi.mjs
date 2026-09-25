@@ -14,6 +14,7 @@ import { sanitizePipeInput, buildSecurePipePrompt } from '../lib/security.js';
 import { handleDaemonCommand } from '../lib/daemon.js';
 import { tryExecuteViaDaemon, runStandalone } from '../lib/client.js';
 import { recordUsage, computeStatsMetrics, formatStatsLine } from '../lib/stats.js';
+import { startHttpServer } from '../lib/server.js';
 
 function printHelp() {
     console.log(`ChAIPi (Chrome AI Pipe) v${VERSION}
@@ -25,6 +26,7 @@ Verwendung:
   echo "Text" | chaipi "Fasse zusammen"
   chaipi daemon <start|stop|status|run>
   chaipi stats
+  chaipi serve [--port <port>] [--host <host>]
 
 Optionen:
   --check               Fragt Modellverfügbarkeit und Browser-Fähigkeiten ab (ohne Prompt)
@@ -42,12 +44,13 @@ Optionen:
   -v, --version         Zeigt die Versionsnummer an
   -h, --help            Zeigt diesen Hilfetext an
 
-Daemon-Verwaltung & Monitoring:
+Daemon, Server & Monitoring:
   chaipi daemon start   Startet den Hintergrund-Worker mit warmer Chrome-Instanz
   chaipi daemon stop    Beendet den Hintergrund-Worker
   chaipi daemon status  Zeigt den Status des Hintergrund-Workers an
   chaipi daemon run     Führt den Daemon im Vordergrund aus (Debugging)
   chaipi stats          Zeigt Quota-Einsparungen und Token-Raten (RPM/TPM/RPD)
+  chaipi serve          Startet OpenAI-kompatiblen HTTP-Server (Standard: Port 8380)
 
 Beispiele:
   chaipi --check
@@ -92,6 +95,10 @@ let isStreamOutput = false;
 let isJsonOutput = false;
 let isStatsOutput = false;
 let isStatsSubcommand = false;
+let isServeSubcommand = false;
+let isHttpFlag = false;
+let servePort = 8380;
+let serveHost = '127.0.0.1';
 let isVerbose = Boolean(process.env.CHAIPI_VERBOSE || process.env.DEBUG);
 let noDaemon = false;
 let customSystemPrompt = null;
@@ -118,6 +125,14 @@ for (let i = 0; i < rawArgs.length; i++) {
         daemonSubcommand = 'worker';
     } else if (arg === 'stats') {
         isStatsSubcommand = true;
+    } else if (arg === 'serve') {
+        isServeSubcommand = true;
+    } else if (arg === '--http') {
+        isHttpFlag = true;
+    } else if ((arg === '--port' || arg === '-p') && rawArgs[i + 1]) {
+        servePort = Number(rawArgs[++i]);
+    } else if (arg === '--host' && rawArgs[i + 1]) {
+        serveHost = rawArgs[++i];
     } else if (arg === '--stats') {
         isStatsOutput = true;
     } else if (arg === '--no-daemon') {
@@ -178,10 +193,45 @@ async function main() {
         process.exit(0);
     }
 
-    // 2. Daemon-Verwaltungsbefehle direkt abhandeln
+    // 2. OpenAI-kompatiblen HTTP-Server starten
+    if (isServeSubcommand) {
+        try {
+            const serverInfo = await startHttpServer({
+                port: servePort,
+                host: serveHost,
+                verbose: isVerbose
+            });
+            console.log(`ChAIPi OpenAI-kompatibler HTTP-Server aktiv:
+  URL:          ${serverInfo.url}
+  Endpunkte:    ${serverInfo.url}/v1/chat/completions
+                ${serverInfo.url}/v1/models
+                ${serverInfo.url}/v1/stats
+  Backend:      Chrome Prompt API (Gemini Nano) über ~/.cache/chaipi/chaipi.sock
+  Beenden:      Strg+C`);
+
+            const shutdown = async () => {
+                console.log('\n[chaipi] Fahre HTTP-Server herunter...');
+                await serverInfo.close();
+                process.exit(0);
+            };
+            process.on('SIGINT', shutdown);
+            process.on('SIGTERM', shutdown);
+            return new Promise(() => {});
+        } catch (err) {
+            console.error(`[chaipi serve Fehler] Server konnte nicht gestartet werden: ${err.message}`);
+            process.exit(1);
+        }
+    }
+
+    // 3. Daemon-Verwaltungsbefehle direkt abhandeln
     if (daemonSubcommand) {
         const scriptPath = fileURLToPath(import.meta.url);
-        await handleDaemonCommand(daemonSubcommand, isJsonOutput, { cliScript: scriptPath });
+        await handleDaemonCommand(daemonSubcommand, isJsonOutput, { 
+            cliScript: scriptPath,
+            enableHttp: isHttpFlag,
+            httpPort: servePort,
+            httpHost: serveHost
+        });
         if (daemonSubcommand !== 'worker' && daemonSubcommand !== 'run') {
             process.exit(0);
         }

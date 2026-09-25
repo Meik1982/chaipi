@@ -1,0 +1,19 @@
+pkgbase = chaipi-git
+	pkgdesc = Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano over CDP)
+	pkgver = 0.1.0.r0.g35ee279
+	pkgrel = 1
+	url = https://github.com/Meik1982/chaipi
+	arch = any
+	license = MIT
+	depends = nodejs>=22
+	optdepends = google-chrome-dev: Chrome Dev channel for Gemini Nano Prompt API
+	optdepends = google-chrome-canary: Chrome Canary channel for Gemini Nano Prompt API
+	optdepends = chromium: Experimental Chromium with Prompt API flags
+	provides = chaipi
+	conflicts = chaipi
+	source = git+https://github.com/Meik1982/chaipi.git
+	source = chaipi.service
+	sha256sums = SKIP
+	sha256sums = 767a34ca60644b5f72a7da53a652491309c588c619750c07e70e73e463e499a0
+
+pkgname = chaipi-git

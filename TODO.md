@@ -124,6 +124,8 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
 ---
 
 ## 🎯 Nächster Schritt: Paketierung & Release
-- [ ] **Arch Linux PKGBUILD (`dist/archlinux/`):**
+- [x] **Arch Linux PKGBUILD (`dist/archlinux/`):**
   - Sauberes `PKGBUILD` für native Paketverwaltung via `makepkg -si` / `pacman` (Zero `make install`).
-  - Bereitstellung von systemd-User-Service und Symlinks über das Arch-Paket.
+  - Bereitstellung von systemd-User-Service (`/usr/lib/systemd/user/chaipi.service`) und Binaries (`/usr/bin/chaipi`).
+  - Automatisierte Validierung in `check()` (`npm run test:unit`) vor Paketerstellung.
+  - `.SRCINFO` gepflegt für AUR / Pacman-Metadaten.

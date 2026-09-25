@@ -1,41 +1,55 @@
 # Maintainer: Meik <https://github.com/Meik1982>
-pkgname=chaipi
-pkgver=0.1.0
+pkgname=chaipi-git
+_pkgname=chaipi
+pkgver=0.1.0.r0.g35ee279
 pkgrel=1
-pkgdesc="Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano & WebGPU over CDP)"
+pkgdesc="Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano over CDP)"
 arch=('any')
 url="https://github.com/Meik1982/chaipi"
 license=('MIT')
-depends=('nodejs>=22.0.0')
+depends=('nodejs>=22')
 optdepends=(
-    'google-chrome: Google Chrome mit Gemini Nano On-Device Support'
-    'chromium: Chromium Browser Alternative'
+    'google-chrome-dev: Chrome Dev channel for Gemini Nano Prompt API'
+    'google-chrome-canary: Chrome Canary channel for Gemini Nano Prompt API'
+    'chromium: Experimental Chromium with Prompt API flags'
 )
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+provides=('chaipi')
+conflicts=('chaipi')
+source=("git+https://github.com/Meik1982/chaipi.git"
+        "chaipi.service")
+sha256sums=('SKIP'
+            '767a34ca60644b5f72a7da53a652491309c588c619750c07e70e73e463e499a0')
+
+pkgver() {
+    cd "${srcdir}/${_pkgname}"
+    ( set -o pipefail
+      git describe --long --tags 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' ||
+      printf "0.1.0.r%s.g%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+    )
+}
+
+check() {
+    cd "${srcdir}/${_pkgname}"
+    npm run test:unit
+}
 
 package() {
-    # Unterstützt sowohl Remote-Tarball als auch lokalen Quelltext-Build
-    if [ -d "$srcdir/$pkgname-$pkgver" ]; then
-        cd "$srcdir/$pkgname-$pkgver"
-    elif [ -d "$srcdir/$pkgname" ]; then
-        cd "$srcdir/$pkgname"
-    else
-        cd "$startdir/../.."
-    fi
+    cd "${srcdir}/${_pkgname}"
 
-    # Anwendungsdateien installieren
-    install -d "$pkgdir/usr/lib/$pkgname"
-    install -d "$pkgdir/usr/lib/$pkgname/bin"
-    install -Dm755 bin/chaipi.mjs "$pkgdir/usr/lib/$pkgname/bin/chaipi.mjs"
-    cp -r lib "$pkgdir/usr/lib/$pkgname/"
-    install -Dm644 package.json "$pkgdir/usr/lib/$pkgname/package.json"
+    # Anwendungsdateien nach /usr/lib/chaipi installieren
+    install -d "${pkgdir}/usr/lib/${_pkgname}"
+    cp -r bin lib package.json "${pkgdir}/usr/lib/${_pkgname}/"
+    chmod 755 "${pkgdir}/usr/lib/${_pkgname}/bin/chaipi.mjs"
 
-    # Symlink in /usr/bin anlegen
-    install -d "$pkgdir/usr/bin"
-    ln -s "/usr/lib/$pkgname/bin/chaipi.mjs" "$pkgdir/usr/bin/chaipi"
+    # Ausführbare Symlinks in /usr/bin bereitstellen
+    install -d "${pkgdir}/usr/bin"
+    ln -s "/usr/lib/${_pkgname}/bin/chaipi.mjs" "${pkgdir}/usr/bin/chaipi"
+    ln -s "/usr/lib/${_pkgname}/bin/chaipi.mjs" "${pkgdir}/usr/bin/local-browser-ai"
 
-    # Dokumentation & Metadaten installieren
-    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
-    install -Dm644 TODO.md "$pkgdir/usr/share/doc/$pkgname/TODO.md"
+    # systemd User Service installieren
+    install -Dm644 "${srcdir}/chaipi.service" "${pkgdir}/usr/lib/systemd/user/chaipi.service"
+
+    # Dokumentation und Lizenz installieren
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${_pkgname}/README.md"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE"
 }

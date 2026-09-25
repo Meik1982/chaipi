@@ -1,0 +1,15 @@
+[Unit]
+Description=ChAIPi - Chrome AI Pipe & Token Guard Daemon
+Documentation=https://github.com/Meik1982/chaipi
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/chaipi daemon run --http
+Restart=on-failure
+RestartSec=3s
+KillMode=mixed
+TimeoutStopSec=10s
+
+[Install]
+WantedBy=default.target

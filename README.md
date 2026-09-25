@@ -214,6 +214,25 @@ Dieser Schritt führt automatisch:
 3. Verifiziert alle Symlinks (`~/.local/bin/chaipi`, `~/.hermes/scripts/chaipi.mjs`).
 4. Startet `systemctl --user restart chaipi.service` neu und prüft den Health-Check (`/health`).
 
+### 📦 Arch Linux / CachyOS Paketierung (PKGBUILD)
+
+ChAIPi kann für eine saubere systemweite Verwaltung nativ als Arch-Paket gebaut und via `pacman` installiert werden:
+
+```bash
+cd dist/archlinux
+makepkg -si
+```
+
+Dies installiert:
+* Die Binaries unter `/usr/bin/chaipi` und `/usr/bin/local-browser-ai`
+* Den systemd-User-Service unter `/usr/lib/systemd/user/chaipi.service`
+* Lizenz und Dokumentation unter `/usr/share/`
+
+Der systemd-User-Service kann anschließend systemweit aktiviert werden:
+```bash
+systemctl --user enable --now chaipi.service
+```
+
 ---
 
 ## 📄 Lizenz

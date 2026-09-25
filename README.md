@@ -190,13 +190,29 @@ makepkg -si
 
 ---
 
-## 🧪 Tests
+## 🧪 Tests & Deployment
 
-Die Testsuite nutzt den nativen Node.js Test-Runner:
+Die Testsuite nutzt den nativen Node.js Test-Runner (Zero-Dependency):
 
 ```bash
 npm test
 ```
+
+### Produktives Deployment (Workspace-Entkopplung)
+
+Um das laufende System (`systemd`, CLI, LiteLLM) vor unfertigen Änderungen während der aktiven Entwicklung im Workspace zu schützen, läuft das Produktivsystem isoliert unter `~/.local/share/chaipi`. 
+
+Nach erfolgreicher Entwicklung synchronisiert der Deployment-Befehl den Stand erst nach 100% grünem Testlauf:
+
+```bash
+npm run deploy
+```
+
+Dieser Schritt führt automatisch:
+1. `npm test` als Quality Gate aus.
+2. Synchronisiert den stabilen Code nach `~/.local/share/chaipi`.
+3. Verifiziert alle Symlinks (`~/.local/bin/chaipi`, `~/.hermes/scripts/chaipi.mjs`).
+4. Startet `systemctl --user restart chaipi.service` neu und prüft den Health-Check (`/health`).
 
 ---
 

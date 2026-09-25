@@ -117,5 +117,13 @@ Dieses Dokument erfasst den aktuellen Umsetzungsstatus, durchgeführte Härtungs
   - Router-Fallback `gemini-3.8-flash -> chaipi` in `~/.hermes/litellm_config.yaml` konfiguriert.
   - Fängt 429-Fehler und TPM-Spitzen automatisch ab und leitet Anfragen auf den lokalen ChAIPi-Server um.
   - `chaipi` und `gemini-nano` im Hermes-Provider `litellm-proxy` registriert.
-- [ ] **WebGPU Fallback Engine (nachgestellt):**
-  - Integration einer leichtgewichtigen OnnxRuntime-Web- oder Transformers.js-Laufzeit auf der existierenden WebGPU-Runtime-Seite für Systeme ohne Gemini Nano Support.
+- [x] **Architektur-Entscheidung: WebGPU Fallback verworfen (Out of Scope):**
+  - Bewusste Entscheidung gegen Feature Creep: ChAIPi bleibt 100 % fokussiert auf Chromes native Built-in AI (Prompt API / Gemini Nano).
+  - Keine externen Modell-Downloads oder generische In-Browser-Engines; für sonstige lokale Modelle existieren dedizierte Runtimes (z. B. Ollama).
+
+---
+
+## 🎯 Nächster Schritt: Paketierung & Release
+- [ ] **Arch Linux PKGBUILD (`dist/archlinux/`):**
+  - Sauberes `PKGBUILD` für native Paketverwaltung via `makepkg -si` / `pacman` (Zero `make install`).
+  - Bereitstellung von systemd-User-Service und Symlinks über das Arch-Paket.

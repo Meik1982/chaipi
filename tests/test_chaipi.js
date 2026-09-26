@@ -41,7 +41,7 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         assert.equal(res.status, 0, 'Diagnose muss erfolgreich sein (Exit 0)');
         const data = JSON.parse(res.stdout.trim());
         assert.equal(data.name, 'ChAIPi');
-        assert.equal(data.version, '0.1.0');
+        assert.equal(data.version, '1.0.0');
         assert.ok(['standard', 'legacy'].includes(data.apiType), 'apiType muss standard oder legacy sein');
         assert.ok(typeof data.availability === 'string', 'availability muss ein String sein');
         assert.equal(typeof data.webGpu, 'boolean', 'webGpu muss boolesch sein');
@@ -69,7 +69,7 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
             // stdout muss weiterhin sauberes, ungefiltertes JSON sein
             const data = JSON.parse(res.stdout.trim());
             assert.equal(data.name, 'ChAIPi');
-            assert.equal(data.version, '0.1.0');
+            assert.equal(data.version, '1.0.0');
             assert.ok(typeof data.availability === 'string');
         }
     });
@@ -95,7 +95,7 @@ test('ChAIPi Testsuite: CLI & Pipe Architektur', async (t) => {
         const parsed = JSON.parse(res.stdout.trim());
         assert.equal(parsed.success, true);
         assert.equal(parsed.data.name, 'ChAIPi');
-        assert.equal(parsed.data.version, '0.1.0');
+        assert.equal(parsed.data.version, '1.0.0');
         assert.ok(typeof parsed.data.availability === 'string');
     });
 

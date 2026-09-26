@@ -18,7 +18,7 @@ import { splitTextIntoChunks, runMapReduce } from '../lib/chunker.js';
 
 test('ChAIPi Unit-Tests: Modulare Komponenten', async (t) => {
     await t.test('1. Constants: Version & Pfade sind definiert', () => {
-        assert.equal(VERSION, '0.1.0');
+        assert.equal(VERSION, '1.0.0');
         assert.ok(typeof SOCKET_PATH === 'string' && SOCKET_PATH.endsWith('.sock'));
         assert.ok(typeof PID_PATH === 'string' && PID_PATH.endsWith('.pid'));
     });

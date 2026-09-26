@@ -1,6 +1,6 @@
 pkgbase = chaipi-git
 	pkgdesc = Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano over CDP)
-	pkgver = 0.1.0.r0.g35ee279
+	pkgver = 1.0.0.r0.g013d1cd
 	pkgrel = 1
 	url = https://github.com/Meik1982/chaipi
 	arch = any

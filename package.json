@@ -1,6 +1,6 @@
 {
   "name": "chaipi",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "ChAIPi: Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal (Chrome Gemini Nano & WebGPU over CDP)",
   "main": "bin/chaipi.mjs",
   "bin": {

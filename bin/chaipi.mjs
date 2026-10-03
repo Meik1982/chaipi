@@ -4,7 +4,7 @@
  * ChAIPi: Zero-Dependency Chrome AI Pipe & Token Guard for the Terminal
  * Nutzt Google Chromes integrierte Prompt API (Gemini Nano) oder WebGPU über natives CDP.
  * 
- * Lizenz: MIT © 2026 Meik
+ * Lizenz: MIT © 2026 Meik Augenblick
  */
 
 import { existsSync, readFileSync } from 'node:fs';

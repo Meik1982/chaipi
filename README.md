@@ -237,4 +237,4 @@ systemctl --user enable --now chaipi.service
 
 ## 📄 Lizenz
 
-MIT License © 2026 Meik
+MIT License © 2026 Meik Augenblick
